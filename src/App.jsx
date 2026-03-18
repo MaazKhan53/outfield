@@ -1,0 +1,2238 @@
+import { supabase } from './supabase'
+import { useState, useEffect, useRef } from "react";
+import {
+  MapPin, Search, Bell, Star, Clock, ChevronRight, Heart,
+  Users, Zap, Shield, ArrowLeft, Filter, Phone, Share2,
+  CheckCircle, Calendar, Navigation, SlidersHorizontal,
+  UserPlus, Trophy, Home, Compass, Swords, User,
+  Upload, Camera, ChevronDown, Wifi, Car, Lightbulb,
+  Armchair, Lock, Coffee, ShoppingBag, Droplets,
+  Plus, Minus, X, Check, AlertCircle, TrendingUp,
+  Activity, Target, Award, Radio, RefreshCw, Map
+} from "lucide-react";
+
+/* ─── DATA ─── */
+const SPORTS = [
+  { id:"all",        label:"All",         bg:"#0F172A", fg:"#fff",     Icon: Activity },
+  { id:"cricket",    label:"Cricket",     bg:"#14532D", fg:"#4ADE80",  Icon: Target   },
+  { id:"football",   label:"Football",    bg:"#7F1D1D", fg:"#FCA5A5",  Icon: Activity },
+  { id:"paddle",     label:"Paddle",      bg:"#78350F", fg:"#FCD34D",  Icon: Swords   },
+  { id:"basketball", label:"Basketball",  bg:"#7C2D12", fg:"#FDBA74",  Icon: Trophy   },
+  { id:"badminton",  label:"Badminton",   bg:"#4C1D95", fg:"#C4B5FD",  Icon: Zap      },
+  { id:"tennis",     label:"Tennis",      bg:"#164E63", fg:"#67E8F9",  Icon: Award    },
+  { id:"volleyball", label:"Volleyball",  bg:"#1E3A8A", fg:"#93C5FD",  Icon: Radio    },
+  { id:"squash",     label:"Squash",      bg:"#3B0764", fg:"#E879F9",  Icon: Target   },
+  { id:"hockey",     label:"Hockey",      bg:"#064E3B", fg:"#6EE7B7",  Icon: Activity },
+  { id:"tabletennis",label:"Table Tennis",bg:"#7F1D1D", fg:"#FCA5A5",  Icon: Zap      },
+  { id:"swimming",   label:"Swimming",    bg:"#0C4A6E", fg:"#7DD3FC",  Icon: RefreshCw},
+];
+
+const AMENITY_ICONS = {
+  "Floodlit":      Lightbulb,
+  "Parking":       Car,
+  "Washrooms":     Droplets,
+  "Turf":          Activity,
+  "Seating":       Armchair,
+  "Canteen":       Coffee,
+  "Security":      Shield,
+  "Changing Room": Lock,
+  "Showers":       Droplets,
+  "Pro Shop":      ShoppingBag,
+  "AC Lounge":     Wifi,
+  "Café":          Coffee,
+  "3 Courts":      Trophy,
+};
+
+const GROUNDS = [
+  {
+    id:1, name:"DHA Sports Complex", area:"DHA Phase 6", distance:"1.2 km",
+    rating:4.8, reviews:124, priceFrom:2500,
+    sports:["cricket","football","paddle"],
+    amenities:["Floodlit","Parking","Washrooms","Turf"],
+    openFrom:"06:00", openTill:"23:00",
+    isFacility: true,
+    description:"Premium sports complex in DHA with 4 separate grounds. Ample parking, well-maintained changing rooms, and security on site 24/7.",
+    img:"https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?w=800&q=80",
+    customImage:null,
+    courts:[
+      { id:"1a", name:"Cricket Ground", sports:["cricket"], surface:"Natural Grass", capacity:22, priceBase:2500, pricePeak:3500,
+        slots:{"Mar 10":[
+          {time:"06:00–08:00",booked:true, price:2500,lfp:false,sport:"cricket"},
+          {time:"08:00–10:00",booked:false,price:2500,lfp:false,sport:"cricket"},
+          {time:"16:00–18:00",booked:true, price:3000,lfp:true, sport:"cricket",bookedBy:"Hamza K.",need:5,joined:2,style:"competitive",position:"Cricket: Batsman"},
+          {time:"18:00–20:00",booked:false,price:3500,lfp:false,sport:"cricket"},
+          {time:"20:00–22:00",booked:false,price:3500,lfp:false,sport:"cricket"},
+        ]}},
+      { id:"1b", name:"Football Ground 1", sports:["football"], surface:"Artificial Turf", capacity:22, priceBase:2000, pricePeak:3000,
+        slots:{"Mar 10":[
+          {time:"06:00–08:00",booked:false,price:2000,lfp:false,sport:"football"},
+          {time:"10:00–12:00",booked:false,price:2000,lfp:false,sport:"football"},
+          {time:"14:00–16:00",booked:false,price:2000,lfp:false,sport:"football"},
+          {time:"20:00–22:00",booked:true, price:3000,lfp:false,sport:"football"},
+        ]}},
+      { id:"1c", name:"Football Ground 2", sports:["football"], surface:"Artificial Turf", capacity:14, priceBase:1800, pricePeak:2500,
+        slots:{"Mar 10":[
+          {time:"06:00–08:00",booked:true, price:1800,lfp:false,sport:"football"},
+          {time:"10:00–12:00",booked:false,price:1800,lfp:false,sport:"football"},
+          {time:"12:00–14:00",booked:true, price:1800,lfp:true, sport:"football",bookedBy:"Ali R.",need:4,joined:1,style:"casual",position:"Football: Any"},
+          {time:"18:00–20:00",booked:false,price:2500,lfp:false,sport:"football"},
+        ]}},
+      { id:"1d", name:"Paddle Court", sports:["paddle"], surface:"Hard Court", capacity:4, priceBase:2500, pricePeak:4000,
+        slots:{"Mar 10":[
+          {time:"08:00–09:30",booked:false,price:2500,lfp:false,sport:"paddle"},
+          {time:"09:30–11:00",booked:false,price:2500,lfp:false,sport:"paddle"},
+          {time:"17:00–18:30",booked:true, price:4000,lfp:false,sport:"paddle"},
+          {time:"20:00–21:30",booked:false,price:4000,lfp:false,sport:"paddle"},
+        ]}},
+    ],
+    slots:{"Mar 10":[]},
+  },
+  {
+    id:2, name:"Gulshan Cricket Arena", area:"Gulshan-e-Iqbal", distance:"2.8 km",
+    rating:4.5, reviews:89, priceFrom:1800,
+    sports:["cricket","football"],
+    amenities:["Floodlit","Seating","Canteen"],
+    openFrom:"07:00", openTill:"22:00",
+    description:"Affordable ground in the heart of Gulshan. Great for practice sessions and friendly matches with stadium-style seating.",
+    img:"https://images.unsplash.com/photo-1529900748604-07564a03e7a6?w=800&q=80",
+    customImage:null,
+    slots:{
+      "Mar 10":[
+        {time:"07:00–09:00",booked:true, price:1800,lfp:true, sport:"cricket",bookedBy:"Bilal M.",need:6,joined:3,style:"casual",position:"Cricket: Bowler"},
+        {time:"09:00–11:00",booked:false,price:1800,lfp:false,sport:"cricket"},
+        {time:"17:00–19:00",booked:false,price:2200,lfp:false,sport:"cricket"},
+        {time:"19:00–21:00",booked:true, price:2500,lfp:false,sport:"cricket"},
+      ],
+    },
+  },
+  {
+    id:3, name:"Clifton Paddle Club", area:"Clifton Block 5", distance:"3.5 km",
+    rating:4.9, reviews:211, priceFrom:3200,
+    sports:["paddle","tennis","badminton"],
+    amenities:["Floodlit","Café","Pro Shop","AC Lounge"],
+    openFrom:"08:00", openTill:"23:00",
+    description:"Karachi's premier paddle destination. Glass-back certified courts, professional coaching, café and pro shop on site.",
+    img:"https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=800&q=80",
+    customImage:null,
+    slots:{
+      "Mar 10":[
+        {time:"08:00–09:30",booked:true, price:3200,lfp:false,sport:"paddle"},
+        {time:"09:30–11:00",booked:true, price:3200,lfp:true, sport:"paddle",bookedBy:"Sara A.",need:1,joined:0,style:"competitive",position:"Paddle: Left"},
+        {time:"11:00–12:30",booked:false,price:3200,lfp:false,sport:"tennis"},
+        {time:"17:00–18:30",booked:false,price:4000,lfp:false,sport:"paddle"},
+        {time:"20:00–21:30",booked:false,price:4000,lfp:false,sport:"badminton"},
+      ],
+    },
+  },
+  {
+    id:4, name:"PECHS Football Ground", area:"PECHS Block 2", distance:"4.1 km",
+    rating:4.3, reviews:67, priceFrom:1500,
+    sports:["football","cricket"],
+    amenities:["Changing Room","Showers","Parking"],
+    openFrom:"06:00", openTill:"22:00",
+    description:"Spacious full-size football pitch. 11-a-side ready with proper changing rooms and showers. Ideal for competitive matches.",
+    img:"https://images.unsplash.com/photo-1459865264687-595d652de67e?w=800&q=80",
+    customImage:null,
+    slots:{
+      "Mar 10":[
+        {time:"06:00–08:00",booked:false,price:1500,lfp:false,sport:"football"},
+        {time:"10:00–12:00",booked:false,price:1500,lfp:false,sport:"cricket"},
+        {time:"16:00–18:00",booked:true, price:2000,lfp:true, sport:"football",bookedBy:"Zain F.",need:8,joined:4,style:"casual",position:"Football: Striker"},
+        {time:"20:00–22:00",booked:false,price:2500,lfp:false,sport:"football"},
+      ],
+    },
+  },
+  {
+    id:5, name:"North Nazimabad Sports Hub", area:"North Nazimabad", distance:"6.7 km",
+    rating:4.6, reviews:145, priceFrom:2000,
+    sports:["basketball","badminton","football"],
+    amenities:["3 Courts","Floodlit","Canteen","Security"],
+    openFrom:"07:00", openTill:"23:00",
+    description:"Multi-sport facility with 3 separate courts across two floors. One of the best equipped sports hubs in North Karachi.",
+    img:"https://images.unsplash.com/photo-1546519638-68e109498ffc?w=800&q=80",
+    customImage:null,
+    slots:{
+      "Mar 10":[
+        {time:"07:00–09:00",booked:false,price:2000,lfp:false,sport:"basketball"},
+        {time:"09:00–11:00",booked:true, price:2000,lfp:true, sport:"basketball",bookedBy:"Omar S.",need:3,joined:1,style:"competitive",position:"Basketball: Guard"},
+        {time:"15:00–17:00",booked:false,price:2500,lfp:false,sport:"badminton"},
+        {time:"19:00–21:00",booked:false,price:3000,lfp:false,sport:"football"},
+      ],
+    },
+  },
+];
+
+const DATES = ["Mar 10","Mar 11","Mar 12","Mar 13","Mar 14"];
+
+const TEAM_CHALLENGES = [
+  {
+    id:"tc1", groundName:"DHA Sports Complex", area:"DHA Phase 6", date:"Mar 10",
+    time:"16:00–18:00", sport:"cricket", teamName:"DHA Strikers",
+    teamSize:11, captain:"Hamza K.", phone:"0312-3456789",
+    format:"11-a-side", challenged:false,
+  },
+  {
+    id:"tc2", groundName:"PECHS Football Ground", area:"PECHS Block 2", date:"Mar 10",
+    time:"16:00–18:00", sport:"football", teamName:"PECHS FC",
+    teamSize:5, captain:"Zain F.", phone:"0333-9876543",
+    format:"5v5 Futsal", challenged:false,
+  },
+  {
+    id:"tc3", groundName:"Clifton Paddle Club", area:"Clifton Block 5", date:"Mar 10",
+    time:"17:00–18:30", sport:"paddle", teamName:"Clifton Padlers",
+    teamSize:2, captain:"Sara A.", phone:"0321-1122334",
+    format:"Doubles", challenged:false,
+  },
+  {
+    id:"tc4", groundName:"North Nazimabad Sports Hub", area:"North Nazimabad", date:"Mar 11",
+    time:"09:00–11:00", sport:"basketball", teamName:"NN Ballers",
+    teamSize:5, captain:"Omar S.", phone:"0300-5544332",
+    format:"5v5", challenged:false,
+  },
+];
+const gImg = (g) => g.customImage || g.img;
+const sportObj = (id) => SPORTS.find(s=>s.id===id) || SPORTS[0];
+
+/* ─── CSS ─── */
+const css = `
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Sora:wght@400;500;600;700;800;900&display=swap');
+
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+:root{
+  --ink:#0A0E1A;
+  --ink2:#2D3448;
+  --ink3:#6B7280;
+  --ink4:#9CA3AF;
+  --white:#FFFFFF;
+  --bg:#F6F7FA;
+  --card:#FFFFFF;
+  --green:#16A34A;
+  --green-d:#15803D;
+  --green-l:#DCFCE7;
+  --green-v:#22C55E;
+  --red:#EF4444;
+  --orange:#F97316;
+  --amber:#F59E0B;
+  --blue:#3B82F6;
+  --border:#E5E7EB;
+  --border2:#F3F4F6;
+  --s1:0 1px 3px rgba(0,0,0,.05),0 1px 6px rgba(0,0,0,.04);
+  --s2:0 4px 14px rgba(0,0,0,.08),0 1px 3px rgba(0,0,0,.05);
+  --s3:0 10px 36px rgba(0,0,0,.13),0 3px 10px rgba(0,0,0,.07);
+  --r:20px;--r2:14px;--r3:10px;--r4:8px;
+}
+html,body{height:100%;font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}
+.app{max-width:420px;margin:0 auto;background:var(--bg);min-height:100vh;position:relative;overflow:hidden;box-shadow:0 0 80px rgba(0,0,0,.2);}
+.screen{display:none;flex-direction:column;min-height:100vh;}
+.screen.active{display:flex;}
+
+/* ── SPLASH ── */
+.splash{
+  background:#060B12;
+  align-items:center;justify-content:center;
+  position:relative;overflow:hidden;
+}
+.splash-bg-grad{position:absolute;inset:0;background:radial-gradient(ellipse 80% 60% at 50% 20%, rgba(22,163,74,.18) 0%, transparent 65%), radial-gradient(ellipse 50% 40% at 80% 80%, rgba(34,197,94,.08) 0%, transparent 60%);}
+.splash-sport-img{
+  position:absolute;
+  right:-30px;
+  bottom:60px;
+  width:300px;
+  height:300px;
+  object-fit:cover;
+  border-radius:50%;
+  opacity:.22;
+  filter:blur(1px) saturate(1.4);
+  animation:imgfloat 4s ease-in-out infinite;
+}
+.splash-racket-wrap{
+  position:absolute;
+  right:-20px;
+  top:50%;
+  transform:translateY(-50%) rotate(-18deg);
+  width:220px;
+  height:220px;
+  z-index:1;
+  animation:racketfloat 5s ease-in-out infinite;
+}
+.splash-racket-img{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  opacity:.55;
+  filter:drop-shadow(0 20px 60px rgba(34,197,94,.3));
+}
+@keyframes racketfloat{0%,100%{transform:translateY(-50%) rotate(-18deg);}50%{transform:translateY(-53%) rotate(-15deg);}}
+@keyframes imgfloat{0%,100%{transform:scale(1);}50%{transform:scale(1.04);}}
+.splash-glow{position:absolute;right:40px;top:45%;width:180px;height:180px;background:radial-gradient(circle,rgba(34,197,94,.15) 0%,transparent 70%);border-radius:50%;pointer-events:none;}
+.splash-inner{position:relative;z-index:2;text-align:left;padding:0 30px;}
+.splash-eyebrow{font-size:10px;color:rgba(255,255,255,.35);font-weight:600;letter-spacing:3px;text-transform:uppercase;margin-bottom:14px;}
+.splash-pill{display:inline-flex;align-items:center;gap:6px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.22);color:var(--green-v);font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;padding:5px 13px;border-radius:100px;margin-bottom:18px;}
+.splash-pill-dot{width:5px;height:5px;border-radius:50%;background:var(--green-v);animation:blink 1.4s ease infinite;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:.2;}}
+.splash-logo{font-family:'Sora',sans-serif;font-size:66px;font-weight:900;color:#fff;letter-spacing:-4px;line-height:1;}
+.splash-logo em{color:var(--green-v);font-style:normal;}
+.splash-tagline{font-size:12px;color:rgba(255,255,255,.28);margin-top:10px;letter-spacing:.4px;font-weight:400;}
+.splash-sport-pills{display:flex;gap:7px;margin-top:22px;flex-wrap:wrap;}
+.splash-sport-pill{font-size:10px;font-weight:600;color:rgba(255,255,255,.4);background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:100px;padding:4px 12px;}
+.splash-loader{display:flex;align-items:center;gap:8px;margin-top:48px;padding:0 30px;position:relative;z-index:2;}
+.splash-bar-fill{height:2px;border-radius:100px;background:var(--green-v);animation:barload 1.8s ease forwards;}
+@keyframes barload{from{width:0;}to{width:100%;}}
+.splash-bar-wrap{flex:1;background:rgba(255,255,255,.07);border-radius:100px;overflow:hidden;height:2px;}
+
+/* ── ONBOARD ── */
+.onboard{background:#060B12;position:relative;overflow:hidden;min-height:100vh;display:flex;flex-direction:column;}
+.ob-bg{position:absolute;inset:0;z-index:0;}
+.ob-bg img{width:100%;height:55%;object-fit:cover;object-position:center 30%;}
+.ob-bg-fade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(6,11,18,0) 0%,rgba(6,11,18,.5) 30%,rgba(6,11,18,.95) 55%,#060B12 72%);}
+.ob-bg-fade2{position:absolute;bottom:0;left:0;right:0;height:60%;background:linear-gradient(180deg,transparent,#060B12 30%);}
+.ob-content{position:relative;z-index:2;display:flex;flex-direction:column;flex:1;padding:0 22px 44px;}
+.ob-top-badge{position:absolute;top:52px;left:22px;display:flex;align-items:center;gap:7px;background:rgba(0,0,0,.45);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.12);border-radius:100px;padding:6px 14px;}
+.ob-top-logo{font-family:'Sora',sans-serif;font-size:15px;font-weight:900;color:#fff;letter-spacing:-.5px;}
+.ob-top-logo em{color:var(--green-v);font-style:normal;}
+.ob-live-dot{width:6px;height:6px;border-radius:50%;background:var(--green-v);animation:blink 1.4s ease infinite;}
+.ob-mid{margin-top:auto;padding-top:52%;}
+.ob-pretag{font-size:10px;font-weight:700;color:var(--green-v);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;}
+.ob-h{font-family:'Sora',sans-serif;font-size:36px;font-weight:900;color:#fff;line-height:1.06;letter-spacing:-1px;}
+.ob-h em{color:var(--green-v);font-style:normal;}
+.ob-sub{font-size:13px;color:rgba(255,255,255,.42);line-height:1.65;margin-top:10px;font-weight:400;max-width:290px;}
+.ob-stats{display:flex;gap:6px;margin-top:18px;}
+.ob-stat{flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:11px 8px;text-align:center;}
+.ob-stat-n{font-family:'Sora',sans-serif;font-size:17px;font-weight:900;color:#fff;}
+.ob-stat-l{font-size:9px;color:rgba(255,255,255,.35);margin-top:2px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;}
+.ob-divider{height:1px;background:rgba(255,255,255,.07);margin:20px 0;}
+.ob-role-label{font-size:11px;font-weight:700;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px;}
+.ob-roles{display:flex;gap:10px;}
+.ob-role-card{flex:1;border-radius:18px;padding:18px 14px;cursor:pointer;transition:all .25s;position:relative;overflow:hidden;border:1.5px solid rgba(255,255,255,.08);}
+.ob-role-card.player{background:linear-gradient(135deg,rgba(22,163,74,.25),rgba(34,197,94,.12));}
+.ob-role-card.owner{background:linear-gradient(135deg,rgba(249,115,22,.2),rgba(251,146,60,.08));}
+.ob-role-card:hover{transform:translateY(-2px);}
+.ob-role-ico{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:11px;}
+.ob-role-card.player .ob-role-ico{background:rgba(34,197,94,.2);}
+.ob-role-card.owner .ob-role-ico{background:rgba(249,115,22,.2);}
+.ob-role-title{font-family:'Sora',sans-serif;font-size:14px;font-weight:800;color:#fff;margin-bottom:4px;}
+.ob-role-desc{font-size:10px;color:rgba(255,255,255,.4);line-height:1.5;font-weight:500;}
+.ob-role-arrow{position:absolute;bottom:14px;right:14px;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;}
+.ob-role-card.player .ob-role-arrow{background:rgba(34,197,94,.25);}
+.ob-role-card.owner .ob-role-arrow{background:rgba(249,115,22,.2);}
+.ob-sports-scroll{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-top:14px;padding-bottom:2px;}
+.ob-sports-scroll::-webkit-scrollbar{display:none;}
+.ob-sport-tag{display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:100px;font-size:10px;font-weight:700;white-space:nowrap;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:rgba(255,255,255,.5);flex-shrink:0;}
+
+/* ── HOME ── */
+.home{background:var(--bg);overflow-y:auto;padding-bottom:84px;}
+.home-head{background:var(--ink);padding:50px 18px 0;position:relative;overflow:hidden;}
+.home-head-blob{position:absolute;top:-80px;right:-60px;width:260px;height:260px;background:radial-gradient(circle,rgba(34,197,94,.1) 0%,transparent 65%);pointer-events:none;}
+.home-head-blob2{position:absolute;bottom:-40px;left:-40px;width:180px;height:180px;background:radial-gradient(circle,rgba(59,130,246,.07) 0%,transparent 65%);pointer-events:none;}
+.hrow{position:relative;z-index:1;display:flex;justify-content:space-between;align-items:center;}
+.hgreet{font-size:11px;color:rgba(255,255,255,.35);font-weight:500;}
+.hname{font-family:'Sora',sans-serif;font-size:20px;font-weight:800;color:#fff;margin-top:1px;letter-spacing:-.3px;}
+.hloc{display:flex;align-items:center;gap:4px;font-size:11px;color:rgba(255,255,255,.35);margin-top:3px;font-weight:400;}
+.head-actions{display:flex;gap:8px;align-items:center;}
+.icon-btn{width:38px;height:38px;border-radius:12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;transition:all .2s;}
+.icon-btn:hover{background:rgba(255,255,255,.14);}
+.notif-dot{position:absolute;top:8px;right:8px;width:7px;height:7px;background:var(--green-v);border-radius:50%;border:1.5px solid var(--ink);}
+.search-wrap{position:relative;z-index:1;margin-top:14px;}
+.search-row{display:flex;gap:9px;align-items:center;}
+.search-box{flex:1;display:flex;align-items:center;gap:9px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:11px 14px;backdrop-filter:blur(10px);}
+.search-input{flex:1;border:none;outline:none;font-family:'Inter',sans-serif;font-size:13px;color:#fff;background:transparent;font-weight:400;}
+.search-input::placeholder{color:rgba(255,255,255,.25);}
+.filter-btn{width:44px;height:44px;border-radius:14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .2s;}
+.filter-btn:hover{background:rgba(255,255,255,.16);}
+
+/* ── HERO CAROUSEL ── */
+.hero-section{padding:20px 18px 0;}
+.section-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
+.section-title{font-family:'Sora',sans-serif;font-size:14px;font-weight:800;color:var(--ink);letter-spacing:-.1px;}
+.section-link{font-size:12px;font-weight:600;color:var(--green);cursor:pointer;display:flex;align-items:center;gap:2px;}
+.hero-scroll{display:flex;gap:12px;overflow-x:auto;scrollbar-width:none;padding-bottom:4px;}
+.hero-scroll::-webkit-scrollbar{display:none;}
+.hero-card{flex-shrink:0;width:248px;border-radius:var(--r);overflow:hidden;position:relative;cursor:pointer;box-shadow:var(--s2);transition:transform .22s;}
+.hero-card:hover{transform:translateY(-3px) scale(1.01);}
+.hero-card:active{transform:scale(.98);}
+.hero-card-img{width:100%;height:162px;object-fit:cover;display:block;}
+.hero-card-img-ph{width:100%;height:162px;background:linear-gradient(135deg,#1a3020,#2d5a3d);display:flex;align-items:center;justify-content:center;}
+.hero-grad{position:absolute;inset:0;background:linear-gradient(145deg,rgba(0,0,0,.04),rgba(0,0,0,.65));}
+.hero-top-row{position:absolute;top:10px;left:10px;right:10px;display:flex;justify-content:space-between;}
+.hero-rating-pill{display:flex;align-items:center;gap:4px;background:rgba(0,0,0,.55);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.12);color:#fff;font-size:10px;font-weight:700;padding:3px 9px;border-radius:100px;}
+.hero-price-pill{background:var(--green-v);color:#fff;font-size:10px;font-weight:800;padding:3px 9px;border-radius:100px;}
+.hero-lfp-pill{position:absolute;top:34px;right:10px;background:var(--orange);color:#fff;font-size:9px;font-weight:700;padding:2px 8px;border-radius:100px;}
+.hero-bottom{position:absolute;bottom:0;left:0;right:0;padding:10px 13px;}
+.hero-name{font-family:'Sora',sans-serif;font-size:14px;font-weight:800;color:#fff;letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.hero-meta{display:flex;align-items:center;gap:8px;margin-top:3px;}
+.hero-meta-item{display:flex;align-items:center;gap:3px;font-size:10px;color:rgba(255,255,255,.65);font-weight:500;}
+.hero-dots{display:flex;gap:4px;justify-content:center;margin-top:10px;}
+.hero-dot{height:4px;border-radius:100px;background:var(--border2);cursor:pointer;transition:all .25s;}
+.hero-dot.on{background:var(--green);width:18px;}
+.hero-dot:not(.on){width:4px;}
+
+/* ── SPORT FILTER ── */
+.sport-section{padding:16px 18px 0;}
+.sport-scroll{display:flex;gap:9px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px;}
+.sport-scroll::-webkit-scrollbar{display:none;}
+.sport-chip{flex-shrink:0;display:flex;align-items:center;gap:7px;padding:8px 14px 8px 10px;border-radius:100px;border:1.5px solid var(--border);background:var(--white);cursor:pointer;transition:all .2s;box-shadow:var(--s1);}
+.sport-chip.on{border-color:transparent;box-shadow:0 3px 12px rgba(0,0,0,.12);}
+.sport-chip-ico{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.sport-chip-label{font-size:12px;font-weight:700;color:var(--ink3);}
+.sport-chip.on .sport-chip-label{color:var(--ink);}
+
+/* ── GROUND CARDS ── */
+.glist-section{padding:16px 18px 0;}
+.glist{display:flex;flex-direction:column;gap:13px;padding-bottom:6px;}
+.gcard{background:var(--white);border-radius:var(--r);overflow:hidden;box-shadow:var(--s1);cursor:pointer;transition:all .22s;border:1px solid rgba(0,0,0,.04);}
+.gcard:hover{transform:translateY(-2px);box-shadow:var(--s2);}
+.gcard:active{transform:scale(.99);}
+.gcard-img-wrap{position:relative;width:100%;height:156px;overflow:hidden;}
+.gcard-img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .3s;}
+.gcard:hover .gcard-img{transform:scale(1.04);}
+.gcard-img-ph{width:100%;height:100%;background:linear-gradient(135deg,#1a3020,#2d5a3d);display:flex;align-items:center;justify-content:center;}
+.gcard-overlay{position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.52) 0%,rgba(0,0,0,.02) 52%);}
+.gcard-tl{position:absolute;top:10px;left:10px;display:flex;gap:5px;}
+.gcard-tr{position:absolute;top:10px;right:10px;}
+.img-pill{display:flex;align-items:center;gap:3px;background:rgba(0,0,0,.58);backdrop-filter:blur(8px);color:#fff;font-size:10px;font-weight:600;padding:3px 9px;border-radius:100px;border:1px solid rgba(255,255,255,.1);}
+.img-pill.green{background:rgba(22,163,74,.85);}
+.img-pill.orange{background:rgba(249,115,22,.9);}
+.gcard-bl{position:absolute;bottom:10px;left:12px;}
+.gcard-br{position:absolute;bottom:10px;right:12px;}
+.gcard-name{font-family:'Sora',sans-serif;font-size:14px;font-weight:800;color:#fff;letter-spacing:-.2px;}
+.gcard-area{display:flex;align-items:center;gap:3px;font-size:10px;color:rgba(255,255,255,.65);margin-top:2px;}
+.gcard-body{padding:13px 14px 14px;}
+.gcard-info-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+.gcard-info-item{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--ink3);font-weight:500;}
+.gcard-amenities{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;}
+.amenity-chip{display:flex;align-items:center;gap:4px;background:var(--bg);border:1px solid var(--border);border-radius:100px;padding:3px 9px;font-size:10px;font-weight:600;color:var(--ink2);}
+.slot-dots-row{display:flex;align-items:center;gap:3px;}
+.sdot{width:9px;height:9px;border-radius:3px;flex-shrink:0;}
+.sdot.free{background:#22C55E;}.sdot.bkd{background:#FCA5A5;border:1px solid #F87171;}.sdot.lfp{background:var(--orange);}
+.sdot-text{font-size:10px;color:var(--ink4);margin-left:5px;font-weight:600;}
+.gcard-bottom{display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--border2);}
+.sports-mini{display:flex;gap:4px;}
+.sport-dot-chip{width:24px;height:24px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.gcard-price{font-family:'Sora',sans-serif;font-size:14px;font-weight:800;color:var(--green);}
+.gcard-price span{font-size:10px;font-weight:500;color:var(--ink4);}
+
+/* ── DETAIL ── */
+.detail{background:var(--bg);overflow-y:auto;}
+.detail-hero{position:relative;width:100%;height:255px;overflow:hidden;}
+.detail-hero img{width:100%;height:100%;object-fit:cover;}
+.detail-hero-ph{width:100%;height:100%;background:linear-gradient(135deg,#1a3020,#2d5a3d);display:flex;align-items:center;justify-content:center;}
+.detail-hero-grad{position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.62) 0%,rgba(0,0,0,.05) 50%);}
+.detail-hero-actions{position:absolute;top:50px;left:14px;right:14px;display:flex;justify-content:space-between;}
+.dhero-btn{width:38px;height:38px;background:rgba(0,0,0,.45);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.15);border-radius:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#fff;transition:all .2s;}
+.dhero-btn:hover{background:rgba(0,0,0,.6);}
+.dhero-actions-right{display:flex;gap:8px;}
+.detail-hero-bottom{position:absolute;bottom:0;left:0;right:0;padding:12px 16px;}
+.detail-hero-name{font-family:'Sora',sans-serif;font-size:20px;font-weight:900;color:#fff;letter-spacing:-.4px;}
+.detail-hero-meta{display:flex;align-items:center;gap:10px;margin-top:5px;}
+.detail-hero-meta-item{display:flex;align-items:center;gap:4px;font-size:11px;color:rgba(255,255,255,.65);font-weight:500;}
+.detail-sheet{background:var(--white);border-radius:22px 22px 0 0;margin-top:-22px;position:relative;padding:20px 17px;min-height:58vh;}
+.detail-tags-row{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px;}
+.dtag{display:flex;align-items:center;gap:5px;background:var(--bg);border:1px solid var(--border);border-radius:100px;padding:5px 11px;font-size:11px;font-weight:600;color:var(--ink2);}
+.detail-stat-row{display:flex;gap:8px;margin-bottom:16px;}
+.detail-stat{flex:1;background:var(--bg);border-radius:12px;padding:10px 12px;border:1px solid var(--border);}
+.dstat-label{font-size:9px;font-weight:700;color:var(--ink4);text-transform:uppercase;letter-spacing:.7px;}
+.dstat-val{font-family:'Sora',sans-serif;font-size:13px;font-weight:800;color:var(--green-d);margin-top:3px;}
+.detail-desc{font-size:13px;color:var(--ink3);line-height:1.7;margin-bottom:16px;}
+.detail-sec{font-family:'Sora',sans-serif;font-size:13px;font-weight:800;color:var(--ink);margin:18px 0 10px;letter-spacing:-.1px;}
+.sports-row{display:flex;flex-wrap:wrap;gap:7px;}
+.sport-pill-detail{display:flex;align-items:center;gap:7px;padding:8px 14px;border-radius:100px;font-size:12px;font-weight:700;border:1.5px solid;transition:all .2s;}
+.map-block{width:100%;height:112px;border-radius:var(--r2);background:linear-gradient(135deg,#DBEAFE,#BFDBFE);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;cursor:pointer;border:1px solid #BFDBFE;transition:all .2s;}
+.map-block:hover{box-shadow:var(--s1);}
+.map-block-t{font-size:12px;font-weight:700;color:#1D4ED8;}
+.map-block-s{font-size:10px;color:#3B82F6;}
+.date-row{display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px;}
+.date-row::-webkit-scrollbar{display:none;}
+.date-btn{flex-shrink:0;padding:7px 15px;border-radius:100px;font-size:11px;font-weight:700;cursor:pointer;border:1.5px solid var(--border);background:var(--white);color:var(--ink4);font-family:'Inter',sans-serif;transition:all .2s;}
+.date-btn.on{background:var(--ink);border-color:var(--ink);color:#fff;}
+.slot-legend{display:flex;gap:12px;margin:10px 0 7px;align-items:center;flex-wrap:wrap;}
+.sl{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--ink3);font-weight:600;}
+.sl-sq{width:9px;height:9px;border-radius:3px;}
+.slots-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+.slot-card{border-radius:13px;padding:12px;border:1.5px solid;cursor:pointer;transition:all .2s;position:relative;overflow:hidden;}
+.slot-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2.5px;}
+.slot-card.free{background:#F0FDF4;border-color:#BBF7D0;}
+.slot-card.free::before{background:var(--green-v);}
+.slot-card.free:hover{background:#DCFCE7;border-color:var(--green-v);transform:translateY(-1px);}
+.slot-card.free.sel{background:#DCFCE7;border-color:var(--green);box-shadow:0 0 0 3px rgba(34,197,94,.12);}
+.slot-card.bkd{background:#FAFAFA;border-color:#F3F4F6;cursor:default;opacity:.62;}
+.slot-card.bkd::before{background:#D1D5DB;}
+.slot-card.lfp{background:#FFF7ED;border-color:#FED7AA;}
+.slot-card.lfp::before{background:var(--orange);}
+.slot-card.lfp:hover{background:#FFEDD5;border-color:var(--orange);}
+.slot-time{font-family:'Sora',sans-serif;font-size:12px;font-weight:800;color:var(--ink);}
+.slot-status{font-size:10px;margin-top:2px;font-weight:600;}
+.slot-price{font-size:11px;font-weight:600;color:var(--ink3);margin-top:2px;}
+.lfp-badge{display:inline-flex;align-items:center;gap:4px;background:var(--orange);color:#fff;font-size:9px;font-weight:700;padding:2px 8px;border-radius:100px;margin-top:5px;}
+.join-btn{width:100%;margin-top:5px;background:var(--orange);color:#fff;border:none;border-radius:8px;padding:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:4px;}
+.join-btn.done{background:transparent;color:var(--orange);border:1.5px solid var(--orange);}
+.lfp-toggle{display:flex;align-items:center;justify-content:space-between;background:var(--bg);border-radius:13px;padding:13px 15px;margin-top:10px;border:1px solid var(--border);}
+.lfp-toggle-left{}
+.lfp-toggle-t{font-size:13px;font-weight:700;color:var(--ink);}
+.lfp-toggle-s{font-size:10px;color:var(--ink4);margin-top:2px;}
+.sw{width:42px;height:24px;border-radius:100px;border:none;cursor:pointer;position:relative;transition:background .28s;flex-shrink:0;}
+.sw.off{background:#D1D5DB;}.sw.on{background:var(--orange);}
+.sw-knob{position:absolute;top:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:left .28s;box-shadow:0 1px 5px rgba(0,0,0,.18);}
+.sw.off .sw-knob{left:3px;}.sw.on .sw-knob{left:21px;}
+.book-bar{position:sticky;bottom:0;background:rgba(255,255,255,.95);backdrop-filter:blur(14px);padding:12px 17px 28px;border-top:1px solid var(--border2);box-shadow:0 -4px 22px rgba(0,0,0,.07);}
+.book-btn{width:100%;background:var(--ink);color:#fff;border:none;border-radius:100px;padding:15px;font-family:'Sora',sans-serif;font-size:14px;font-weight:800;cursor:pointer;transition:all .22s;letter-spacing:.1px;}
+.book-btn:hover:not(:disabled){background:var(--green-d);transform:translateY(-1px);box-shadow:0 6px 22px rgba(22,163,74,.28);}
+.book-btn:disabled{opacity:.3;cursor:not-allowed;}
+
+/* ── CONFIRM ── */
+.confirm{background:var(--bg);}
+.confirm-head{background:var(--ink);padding:50px 18px 24px;position:relative;overflow:hidden;}
+.confirm-head-glow{position:absolute;top:-50px;right:-30px;width:180px;height:180px;background:radial-gradient(circle,rgba(34,197,94,.12),transparent 70%);pointer-events:none;}
+.confirm-back-btn{display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.08);border:none;border-radius:9px;padding:7px 12px;color:rgba(255,255,255,.65);cursor:pointer;font-size:12px;font-weight:600;font-family:'Inter',sans-serif;}
+.confirm-title{font-family:'Sora',sans-serif;font-size:19px;font-weight:900;color:#fff;margin-top:14px;letter-spacing:-.3px;}
+.confirm-sub{font-size:11px;color:rgba(255,255,255,.35);margin-top:3px;}
+.confirm-body{padding:18px 17px 90px;}
+.c-block{background:#fff;border-radius:var(--r);padding:17px;box-shadow:var(--s1);border:1px solid rgba(0,0,0,.04);margin-bottom:12px;}
+.c-block-title{font-size:10px;font-weight:800;color:var(--ink4);text-transform:uppercase;letter-spacing:1px;margin-bottom:13px;}
+.c-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border2);}
+.c-row:last-child{border-bottom:none;padding-bottom:0;}
+.c-label{font-size:12px;color:var(--ink3);font-weight:400;}
+.c-val{font-size:12px;font-weight:700;color:var(--ink);}
+.c-total{font-family:'Sora',sans-serif;font-size:17px;font-weight:900;color:var(--green-d);}
+.pay-list{display:flex;flex-direction:column;gap:8px;}
+.pay-item{display:flex;align-items:center;gap:12px;padding:13px;border-radius:13px;border:1.5px solid var(--border);cursor:pointer;transition:all .2s;}
+.pay-item.sel{border-color:var(--ink);background:var(--bg);}
+.pay-ico-wrap{width:36px;height:36px;border-radius:10px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;border:1px solid var(--border);}
+.pay-label{font-size:13px;font-weight:700;color:var(--ink);flex:1;}
+.pay-radio{width:18px;height:18px;border-radius:50%;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.pay-radio.sel{border-color:var(--ink);background:var(--ink);}
+.pay-radio.sel::after{content:'';width:6px;height:6px;background:#fff;border-radius:50%;}
+.soon-note{background:#FFF7ED;border:1px solid #FED7AA;border-radius:10px;padding:10px 13px;margin-top:9px;font-size:11px;color:#92400E;display:flex;align-items:flex-start;gap:8px;}
+
+/* ── SUCCESS ── */
+.success{align-items:center;justify-content:center;padding:44px 28px;background:#fff;text-align:center;}
+.success-ring{width:100px;height:100px;border-radius:50%;background:linear-gradient(135deg,var(--green-v),#86EFAC);display:flex;align-items:center;justify-content:center;box-shadow:0 12px 40px rgba(34,197,94,.28),0 0 0 14px rgba(34,197,94,.07);animation:pop .5s cubic-bezier(.34,1.56,.64,1);}
+@keyframes pop{from{transform:scale(0);opacity:0;}to{transform:scale(1);opacity:1;}}
+.success-title{font-family:'Sora',sans-serif;font-size:24px;font-weight:900;color:var(--ink);margin-top:22px;letter-spacing:-.4px;}
+.success-sub{font-size:13px;color:var(--ink3);margin-top:7px;line-height:1.6;}
+.ref-box{background:var(--green-l);border:1px solid rgba(22,163,74,.2);border-radius:var(--r);padding:15px 22px;margin-top:22px;width:100%;}
+.ref-label{font-size:10px;color:var(--ink4);text-transform:uppercase;letter-spacing:1px;font-weight:700;}
+.ref-code{font-family:'Sora',sans-serif;font-size:22px;font-weight:900;color:var(--green-d);margin-top:4px;letter-spacing:2.5px;}
+.success-detail-box{background:var(--bg);border-radius:13px;padding:14px;margin-top:13px;width:100%;text-align:left;border:1px solid var(--border);}
+.sdb-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink2);padding:4px 0;font-weight:500;}
+
+/* ── MATCHMAKING ── */
+.match{background:var(--bg);overflow-y:auto;padding-bottom:88px;}
+.match-head{background:var(--ink);padding:50px 18px 26px;position:relative;overflow:hidden;}
+.match-head::after{content:'';position:absolute;bottom:-18px;left:0;right:0;height:36px;background:var(--bg);border-radius:22px 22px 0 0;}
+.match-glow{position:absolute;top:-30px;right:-20px;width:160px;height:160px;background:radial-gradient(circle,rgba(249,115,22,.15),transparent 70%);}
+.match-title{font-family:'Sora',sans-serif;font-size:20px;font-weight:900;color:#fff;letter-spacing:-.3px;}
+.match-sub{font-size:11px;color:rgba(255,255,255,.35);margin-top:3px;}
+.mc{background:#fff;border-radius:var(--r2);padding:15px;box-shadow:var(--s1);border:1px solid rgba(0,0,0,.04);margin-bottom:10px;transition:all .2s;}
+.mc:hover{transform:translateY(-1px);box-shadow:var(--s2);}
+.mc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+.mc-name{font-family:'Sora',sans-serif;font-size:13px;font-weight:800;color:var(--ink);letter-spacing:-.2px;}
+.mc-sport-tag{font-size:10px;font-weight:700;padding:3px 10px;border-radius:100px;white-space:nowrap;}
+.mc-detail{display:flex;flex-direction:column;gap:3px;margin-top:6px;}
+.mc-detail-row{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--ink3);font-weight:500;}
+.mc-bottom{display:flex;align-items:center;gap:7px;margin-top:11px;}
+.mc-avs{display:flex;}
+.mc-av{width:26px;height:26px;border-radius:50%;border:2px solid #fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;margin-left:-6px;background:linear-gradient(135deg,#DCFCE7,#BBF7D0);color:var(--green);}
+.mc-av:first-child{margin-left:0;}
+.mc-spots{font-size:11px;color:var(--orange);font-weight:700;}
+.mc-join{background:var(--orange);color:#fff;border:none;border-radius:100px;padding:7px 16px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;transition:all .2s;margin-left:auto;display:flex;align-items:center;gap:4px;}
+.mc-join:hover{background:#EA6C0A;}
+.mc-join.done{background:transparent;color:var(--orange);border:1.5px solid var(--orange);}
+
+/* ── EXPLORE ── */
+.explore{background:var(--bg);overflow-y:auto;padding-bottom:88px;}
+.exp-head{background:var(--ink);padding:50px 18px 26px;position:relative;overflow:hidden;}
+.exp-head::after{content:'';position:absolute;bottom:-18px;left:0;right:0;height:36px;background:var(--bg);border-radius:22px 22px 0 0;}
+.exp-title{font-family:'Sora',sans-serif;font-size:20px;font-weight:900;color:#fff;letter-spacing:-.3px;}
+.exp-sub{font-size:11px;color:rgba(255,255,255,.35);margin-top:3px;}
+
+/* ── PROFILE ── */
+.profile{background:var(--bg);overflow-y:auto;padding-bottom:88px;}
+.prof-head{background:var(--ink);padding:50px 18px 44px;text-align:center;position:relative;overflow:hidden;}
+.prof-head::after{content:'';position:absolute;bottom:-18px;left:0;right:0;height:36px;background:var(--bg);border-radius:22px 22px 0 0;}
+.prof-glow{position:absolute;inset:0;background:radial-gradient(ellipse 60% 50% at 50% 40%,rgba(34,197,94,.1) 0%,transparent 70%);pointer-events:none;}
+.prof-av-wrap{position:relative;display:inline-block;margin-bottom:2px;}
+.prof-av{width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,var(--green-d),var(--green-v));display:flex;align-items:center;justify-content:center;border:3px solid rgba(255,255,255,.12);box-shadow:0 0 0 6px rgba(34,197,94,.08);}
+.prof-av-badge{position:absolute;bottom:0;right:0;width:22px;height:22px;background:var(--green-v);border:2px solid var(--ink);border-radius:50%;display:flex;align-items:center;justify-content:center;}
+.prof-name{font-family:'Sora',sans-serif;font-size:19px;font-weight:900;color:#fff;margin-top:11px;letter-spacing:-.3px;}
+.prof-sub{font-size:11px;color:rgba(255,255,255,.35);margin-top:3px;}
+.prof-body{padding:20px 18px;}
+.stat-row{display:flex;gap:9px;margin-bottom:18px;}
+.stat-card{flex:1;background:#fff;border-radius:14px;padding:14px;text-align:center;box-shadow:var(--s1);border:1px solid rgba(0,0,0,.04);}
+.stat-n{font-family:'Sora',sans-serif;font-size:22px;font-weight:900;color:var(--green-d);}
+.stat-l{font-size:10px;color:var(--ink4);margin-top:2px;font-weight:600;}
+.prof-list{display:flex;flex-direction:column;gap:9px;}
+.prof-row{background:#fff;border-radius:13px;padding:14px 16px;display:flex;align-items:center;gap:12px;border:1px solid rgba(0,0,0,.04);cursor:pointer;transition:all .2s;box-shadow:var(--s1);}
+.prof-row:hover{transform:translateX(3px);}
+.prof-row-ico{width:36px;height:36px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.prof-row-t{font-size:13px;font-weight:700;color:var(--ink);}
+.prof-row-s{font-size:10px;color:var(--ink4);margin-top:1px;font-weight:500;}
+.prof-row-arr{margin-left:auto;color:var(--ink4);}
+
+/* ── FACILITY STEPS ── */
+.form-steps{display:flex;gap:0;margin:0 18px 16px;border-radius:14px;overflow:hidden;border:1.5px solid var(--border);background:#fff;}
+.form-step{flex:1;padding:12px 8px;text-align:center;font-size:11px;font-weight:700;color:var(--ink4);cursor:pointer;transition:all .2s;display:flex;flex-direction:column;align-items:center;gap:3px;border-right:1px solid var(--border);}
+.form-step:last-child{border-right:none;}
+.form-step.on{background:var(--ink);color:#fff;}
+.form-step.done{background:var(--green-l);color:var(--green-d);}
+.form-step-num{width:20px;height:20px;border-radius:50%;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.15);margin-bottom:1px;}
+.form-step.on .form-step-num{background:rgba(255,255,255,.2);}
+.form-step.done .form-step-num{background:var(--green-v);color:#fff;}
+/* ── COURT CARDS ── */
+.court-card{background:#fff;border-radius:var(--r2);border:1.5px solid var(--border);margin-bottom:12px;overflow:hidden;box-shadow:var(--s1);}
+.court-card-header{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;background:var(--bg);border-bottom:1px solid var(--border);}
+.court-card-title{font-family:'Sora',sans-serif;font-size:13px;font-weight:800;color:var(--ink);}
+.court-card-body{padding:14px 15px;}
+.court-sport-mini{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+.court-sport-btn{display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:100px;border:1.5px solid var(--border);font-size:10px;font-weight:700;color:var(--ink4);background:#fff;cursor:pointer;transition:all .2s;font-family:'Inter',sans-serif;}
+.court-sport-btn.on{border-color:var(--green);background:var(--green-l);color:var(--green-d);}
+.court-remove-btn{display:flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:#DC2626;background:#FEF2F2;border:none;border-radius:8px;padding:5px 10px;cursor:pointer;font-family:'Inter',sans-serif;}
+.add-court-btn{width:100%;background:transparent;border:2px dashed var(--border);border-radius:var(--r2);padding:14px;font-size:13px;font-weight:700;color:var(--ink4);cursor:pointer;font-family:'Inter',sans-serif;display:flex;align-items:center;justify-content:center;gap:7px;transition:all .2s;margin-bottom:13px;}
+.add-court-btn:hover{border-color:var(--green);color:var(--green-d);background:var(--green-l);}
+.facility-summary{background:linear-gradient(135deg,var(--ink),#1e2738);border-radius:var(--r2);padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px;}
+.facility-summary-ico{width:36px;height:36px;border-radius:10px;background:rgba(34,197,94,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.facility-summary-name{font-family:'Sora',sans-serif;font-size:13px;font-weight:800;color:#fff;}
+.facility-summary-sub{font-size:10px;color:rgba(255,255,255,.4);margin-top:2px;}
+.facility-summary-edit{margin-left:auto;font-size:10px;font-weight:700;color:var(--green-v);cursor:pointer;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.25);border-radius:8px;padding:4px 9px;}
+
+/* ── OWNER TABS ── */
+.owner-tabs{display:flex;gap:8px;padding:16px 18px 0;}
+.owner-tab{flex:1;padding:10px;border-radius:12px;border:1.5px solid var(--border);background:#fff;font-size:12px;font-weight:700;color:var(--ink4);cursor:pointer;font-family:'Inter',sans-serif;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:6px;}
+.owner-tab.on{background:var(--ink);border-color:var(--ink);color:#fff;}
+.block-slot-row{display:flex;gap:8px;align-items:center;background:#fff;border-radius:12px;border:1px solid var(--border);padding:11px 14px;margin-bottom:9px;}
+.block-slot-time{flex:1;font-size:13px;font-weight:600;color:var(--ink);}
+.block-slot-reason{font-size:10px;color:var(--ink4);margin-top:2px;}
+.block-slot-badge{font-size:9px;font-weight:800;background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;border-radius:100px;padding:3px 8px;}
+.block-add-row{display:flex;gap:8px;margin-top:4px;}
+.block-time-input{flex:1;padding:10px 12px;border:1.5px solid var(--border);border-radius:11px;font-family:'Inter',sans-serif;font-size:12px;color:var(--ink);outline:none;}
+.block-add-btn{background:var(--ink);color:#fff;border:none;border-radius:11px;padding:10px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;display:flex;align-items:center;gap:5px;}
+.break-row{display:flex;gap:7px;align-items:center;margin-bottom:9px;}
+.break-label{font-size:11px;font-weight:600;color:var(--ink3);width:36px;}
+.break-remove{width:28px;height:28px;border-radius:8px;background:#FEF2F2;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.amenity-grid{display:flex;flex-wrap:wrap;gap:7px;}
+.amenity-toggle{display:flex;align-items:center;gap:5px;padding:7px 12px;border-radius:100px;border:1.5px solid var(--border);cursor:pointer;font-size:11px;font-weight:600;color:var(--ink3);background:#fff;transition:all .2s;font-family:'Inter',sans-serif;}
+.amenity-toggle.on{background:var(--green-l);border-color:var(--green);color:var(--green-d);}
+.price-grid{display:flex;flex-wrap:wrap;gap:9px;}
+.price-grid .fg{flex:1;min-width:120px;}
+.slot-dur-opts{display:flex;gap:7px;}
+.slot-dur-opt{flex:1;padding:10px;border:1.5px solid var(--border);border-radius:12px;text-align:center;cursor:pointer;font-size:12px;font-weight:700;color:var(--ink3);background:#fff;transition:all .2s;}
+.slot-dur-opt.on{background:var(--ink);border-color:var(--ink);color:#fff;}
+.info-note{display:flex;align-items:flex-start;gap:7px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:9px 12px;font-size:11px;color:#92400E;line-height:1.5;margin-top:8px;}
+
+/* ── OWNER ── */
+.owner{background:var(--bg);overflow-y:auto;padding-bottom:88px;}
+.owner-head{background:var(--ink);padding:50px 18px 26px;position:relative;overflow:hidden;}
+.owner-head::after{content:'';position:absolute;bottom:-18px;left:0;right:0;height:36px;background:var(--bg);border-radius:22px 22px 0 0;}
+.owner-title{font-family:'Sora',sans-serif;font-size:20px;font-weight:900;color:#fff;letter-spacing:-.3px;margin-top:10px;}
+.owner-sub{font-size:11px;color:rgba(255,255,255,.35);margin-top:3px;}
+.owner-body{padding:20px 17px 90px;}
+.form-block{background:#fff;border-radius:var(--r);padding:18px;box-shadow:var(--s1);border:1px solid rgba(0,0,0,.04);margin-bottom:13px;}
+.form-block-t{font-size:10px;font-weight:800;color:var(--ink4);text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;}
+.fg{margin-bottom:13px;}
+.fg:last-child{margin-bottom:0;}
+.flbl{font-size:11px;font-weight:700;color:var(--ink2);margin-bottom:5px;display:block;}
+.finput{width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:12px;font-family:'Inter',sans-serif;font-size:13px;color:var(--ink);outline:none;transition:border-color .2s;font-weight:400;}
+.finput:focus{border-color:var(--green);}
+.fta{resize:none;height:72px;}
+.time-pair{display:flex;gap:10px;}
+.time-pair .fg{flex:1;}
+.sport-toggles{display:flex;flex-wrap:wrap;gap:7px;}
+.stoggle{display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:100px;border:1.5px solid var(--border);cursor:pointer;font-size:12px;font-weight:700;color:var(--ink3);background:#fff;transition:all .2s;font-family:'Inter',sans-serif;}
+.stoggle.on{background:var(--ink);border-color:var(--ink);color:#fff;}
+.photo-drop{border:2px dashed var(--border);border-radius:var(--r2);padding:26px 18px;text-align:center;cursor:pointer;transition:all .2s;position:relative;overflow:hidden;background:#FAFAFA;}
+.photo-drop:hover{border-color:var(--green);background:var(--green-l);}
+.photo-drop.has-img{border:none;padding:0;}
+.photo-preview-img{width:100%;height:170px;object-fit:cover;border-radius:var(--r2);display:block;}
+.photo-change-btn{position:absolute;bottom:9px;right:9px;display:flex;align-items:center;gap:5px;background:rgba(0,0,0,.65);color:#fff;font-size:10px;font-weight:700;padding:5px 11px;border-radius:100px;cursor:pointer;backdrop-filter:blur(4px);font-family:'Inter',sans-serif;}
+.file-hidden{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+.upload-ico-wrap{width:48px;height:48px;border-radius:14px;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;margin:0 auto 10px;}
+.upload-t{font-size:13px;font-weight:700;color:var(--ink2);}
+.upload-s{font-size:11px;color:var(--ink4);margin-top:4px;line-height:1.5;}
+
+/* ── MATCH TABS ── */
+.match-tabs{display:flex;gap:8px;padding:0 18px;margin-bottom:4px;}
+.match-tab{flex:1;padding:10px;border-radius:12px;border:1.5px solid var(--border);background:#fff;font-size:12px;font-weight:700;color:var(--ink4);cursor:pointer;font-family:'Inter',sans-serif;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:6px;}
+.match-tab.on{background:var(--ink);border-color:var(--ink);color:#fff;}
+.player-style-badge{display:inline-flex;align-items:center;gap:4px;font-size:9px;font-weight:800;padding:3px 8px;border-radius:100px;text-transform:uppercase;letter-spacing:.5px;}
+.player-style-badge.casual{background:#DBEAFE;color:#1D4ED8;}
+.player-style-badge.competitive{background:#FEF3C7;color:#B45309;}
+.mc-position{font-size:10px;color:var(--ink4);font-weight:600;margin-top:2px;}
+/* ── TEAM CHALLENGE CARDS ── */
+.tc{background:#fff;border-radius:var(--r);box-shadow:var(--s1);border:1px solid rgba(0,0,0,.05);margin-bottom:13px;overflow:hidden;}
+.tc-banner{height:6px;width:100%;}
+.tc-body{padding:14px 16px;}
+.tc-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px;}
+.tc-team{font-family:'Sora',sans-serif;font-size:15px;font-weight:800;color:var(--ink);letter-spacing:-.2px;}
+.tc-format-tag{font-size:10px;font-weight:700;background:var(--bg);border:1px solid var(--border);border-radius:100px;padding:3px 9px;color:var(--ink3);}
+.tc-detail{display:flex;flex-direction:column;gap:5px;margin-bottom:11px;}
+.tc-detail-row{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink4);font-weight:500;}
+.tc-captain-row{display:flex;align-items:center;gap:8px;background:var(--bg);border-radius:10px;padding:9px 12px;margin-bottom:11px;}
+.tc-captain-av{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--green-d),var(--green-v));display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;flex-shrink:0;}
+.tc-captain-name{font-size:12px;font-weight:700;color:var(--ink);}
+.tc-phone{font-size:11px;color:var(--ink4);margin-top:1px;}
+.tc-accept-row{display:flex;gap:8px;}
+.tc-reject{flex:1;border:1.5px solid var(--border);background:#fff;border-radius:100px;padding:9px;font-size:12px;font-weight:700;color:var(--ink3);cursor:pointer;font-family:'Inter',sans-serif;transition:all .2s;}
+.tc-accept{flex:2;background:var(--green-v);border:none;border-radius:100px;padding:9px;font-size:12px;font-weight:800;color:#fff;cursor:pointer;font-family:'Inter',sans-serif;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:5px;}
+.tc-accept:hover{background:var(--green-d);}
+.tc-challenge-btn{width:100%;background:var(--ink);border:none;border-radius:100px;padding:11px;font-size:12px;font-weight:800;color:#fff;cursor:pointer;font-family:'Inter',sans-serif;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:6px;}
+.tc-challenge-btn:hover{background:#1e2738;}
+.tc-challenge-btn.sent{background:transparent;border:1.5px solid var(--ink);color:var(--ink);}
+.tc-pending-note{font-size:10px;color:var(--ink4);text-align:center;margin-top:7px;display:flex;align-items:center;justify-content:center;gap:4px;}
+
+/* ── NAV ── */
+.navbar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:420px;background:rgba(255,255,255,.97);backdrop-filter:blur(16px);border-top:1px solid var(--border);display:flex;padding:8px 0 22px;z-index:100;box-shadow:0 -6px 26px rgba(0,0,0,.08);}
+.nav-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;padding:2px 0;transition:all .18s;}
+.nav-ico-wrap{width:32px;height:32px;border-radius:10px;display:flex;align-items:center;justify-content:center;transition:all .22s;}
+.nav-item.on .nav-ico-wrap{background:var(--green-l);}
+.nav-lbl{font-size:10px;font-weight:700;color:var(--ink4);}
+.nav-item.on .nav-lbl{color:var(--green-d);}
+
+/* ── TOAST ── */
+.toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:11px 20px;border-radius:100px;font-size:12px;font-weight:600;z-index:9999;box-shadow:var(--s3);animation:tin .22s ease;white-space:nowrap;max-width:300px;text-align:center;display:flex;align-items:center;gap:7px;}
+@keyframes tin{from{opacity:0;transform:translateX(-50%) translateY(-10px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
+
+.empty{text-align:center;padding:52px 24px;}
+.empty-ico-wrap{width:64px;height:64px;border-radius:18px;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;}
+.empty-t{font-family:'Sora',sans-serif;font-size:15px;font-weight:800;color:var(--ink2);letter-spacing:-.2px;}
+.empty-s{font-size:13px;color:var(--ink4);margin-top:5px;line-height:1.5;}
+
+/* ── COURT PICKER ── */
+.court-picker-banner{background:linear-gradient(135deg,var(--ink),#1a2540);padding:16px 18px;border-radius:var(--r2);margin-bottom:14px;}
+.court-picker-title{font-family:'Sora',sans-serif;font-size:13px;font-weight:800;color:#fff;margin-bottom:3px;}
+.court-picker-sub{font-size:11px;color:rgba(255,255,255,.4);}
+.court-pick-cards{display:flex;flex-direction:column;gap:9px;}
+.court-pick-card{background:#fff;border-radius:var(--r2);border:1.5px solid var(--border);padding:13px 15px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:12px;box-shadow:var(--s1);}
+.court-pick-card:hover{border-color:var(--green);transform:translateX(2px);}
+.court-pick-card.sel{border-color:var(--green);background:var(--green-l);}
+.court-pick-ico{width:36px;height:36px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.court-pick-name{font-family:'Sora',sans-serif;font-size:13px;font-weight:800;color:var(--ink);}
+.court-pick-meta{display:flex;gap:8px;margin-top:3px;flex-wrap:wrap;}
+.court-pick-tag{font-size:10px;color:var(--ink4);font-weight:600;display:flex;align-items:center;gap:3px;}
+.court-pick-price{font-size:11px;font-weight:800;color:var(--green-d);margin-left:auto;}
+.court-pick-arr{color:var(--ink4);}
+.court-pick-card.sel .court-pick-arr{color:var(--green-d);}
+/* ── RATING MODAL ── */
+.rating-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;display:flex;align-items:flex-end;justify-content:center;backdrop-filter:blur(4px);}
+.rating-sheet{background:#fff;border-radius:24px 24px 0 0;padding:28px 24px 44px;width:100%;max-width:420px;animation:slideup .3s ease;}
+@keyframes slideup{from{transform:translateY(100%);}to{transform:translateY(0);}}
+.rating-ico{width:56px;height:56px;border-radius:16px;background:var(--green-l);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;}
+.rating-title{font-family:'Sora',sans-serif;font-size:18px;font-weight:900;color:var(--ink);text-align:center;letter-spacing:-.3px;}
+.rating-sub{font-size:13px;color:var(--ink4);text-align:center;margin-top:6px;line-height:1.5;}
+.rating-stars{display:flex;justify-content:center;gap:10px;margin:20px 0;}
+.rating-star{cursor:pointer;transition:transform .15s;}
+.rating-star:hover{transform:scale(1.2);}
+.rating-labels{display:flex;justify-content:space-between;font-size:10px;color:var(--ink4);font-weight:600;margin-top:-10px;margin-bottom:16px;}
+.rating-textarea{width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:12px;font-family:'Inter',sans-serif;font-size:13px;color:var(--ink);outline:none;resize:none;height:72px;transition:border-color .2s;}
+.rating-textarea:focus{border-color:var(--green);}
+.rating-submit{width:100%;background:var(--green-v);border:none;border-radius:100px;padding:15px;font-family:'Sora',sans-serif;font-size:14px;font-weight:800;color:var(--ink);cursor:pointer;margin-top:12px;transition:all .22s;}
+.rating-submit:hover{background:var(--green-d);color:#fff;}
+.rating-skip{width:100%;background:transparent;border:none;font-size:12px;font-weight:600;color:var(--ink4);cursor:pointer;margin-top:8px;font-family:'Inter',sans-serif;}
+/* ── LATE BOOKING ── */
+.late-badge{display:inline-flex;align-items:center;gap:5px;background:#FEF3C7;border:1px solid #FDE68A;color:#92400E;font-size:10px;font-weight:700;padding:4px 10px;border-radius:100px;}
+
+.fade{animation:fadeup .22s ease;}
+@keyframes fadeup{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+`;
+
+/* ─── ICON HELPERS ─── */
+const Ico = ({icon:I, size=16, color="currentColor", strokeWidth=2}) =>
+  <I size={size} color={color} strokeWidth={strokeWidth}/>;
+
+export default function Outfield() {
+  const [screen, setScreen]   = useState("splash");
+  const [nav, setNav]         = useState("home");
+  const [sport, setSport]     = useState("all");
+  const [search, setSearch]   = useState("");
+  const [ground, setGround]   = useState(null);
+  const [date, setDate]       = useState("Mar 10");
+  const [slot, setSlot]       = useState(null);
+  const [pay, setPay]         = useState("cash");
+  const [joined, setJoined]   = useState({});
+  const [toast, setToast]     = useState(null);
+  const [lfp, setLfp]         = useState(false);
+  const [faved, setFaved]     = useState({});
+  const [ownerSports, setOwnerSports] = useState([]);
+  const [ownerImg, setOwnerImg] = useState(null);
+  const [ownerSlotDur, setOwnerSlotDur] = useState("2 hr");
+  const [ownerBreaks, setOwnerBreaks] = useState([{from:"13:00",to:"14:00"}]);
+  const [blockedSlots, setBlockedSlots] = useState([]);
+  const [ownerAmenities, setOwnerAmenities] = useState([]);
+  const [ownerSection, setOwnerSection] = useState("list");
+  const [ownerFormStep, setOwnerFormStep] = useState("facility"); // "facility" | "courts"
+  const [ownerCourts, setOwnerCourts] = useState([
+    {id:1, name:"Ground 1", sports:[], type:"Outdoor", capacity:"", priceBase:"", pricePeak:"", slotDur:"2 hr", notes:""}
+  ]);
+  const [heroIdx, setHeroIdx] = useState(0);
+  const [court, setCourt]       = useState(null);   // selected court within a facility
+  const [ratingModal, setRatingModal] = useState(false);
+  const [ratingVal, setRatingVal]     = useState(0);
+  const [ratingHover, setRatingHover] = useState(0);
+  const [ratingDone, setRatingDone]   = useState(false);
+  const [matchTab, setMatchTab]   = useState("players");
+  const [teamReqs, setTeamReqs]   = useState({});
+  const [bookRef]                 = useState("OTF-" + Math.random().toString(36).substring(2,6).toUpperCase());
+  const fileRef               = useRef(null);
+
+  useEffect(() => { const t = setTimeout(() => setScreen("onboard"), 2200); return () => clearTimeout(t); }, []);
+
+  useEffect(() => {
+    if (screen !== "home") return;
+    const t = setInterval(() => setHeroIdx(i => (i+1) % Math.min(GROUNDS.length,4)), 3600);
+    return () => clearInterval(t);
+  }, [screen]);
+
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2700); };
+
+  const goNav = (n) => {
+    setNav(n);
+    setScreen({home:"home",explore:"explore",match:"match",profile:"profile"}[n]);
+  };
+
+  const filtered = GROUNDS.filter(g => {
+    const ms = sport === "all" || g.sports.includes(sport);
+    const mq = !search || g.name.toLowerCase().includes(search.toLowerCase()) || g.area.toLowerCase().includes(search.toLowerCase());
+    return ms && mq;
+  });
+
+  const curSlot  = ground && slot !== null ? getSlots(ground, date)[slot] : null;
+
+  const allLfp = GROUNDS.flatMap(g =>
+    Object.entries(g.slots).flatMap(([d, slots]) =>
+      slots.filter(s => s.lfp).map(s => ({ ...s, groundName:g.name, groundArea:g.area, dateLabel:d, groundId:g.id }))
+    )
+  );
+
+  const openGround = (g) => { setGround(g); setCourt(null); setSlot(null); setLfp(false); setScreen("detail"); };
+  const activeCourt = ground?.isFacility ? court : null;
+  const getSlots = (g, d) => {
+    if (g?.isFacility && court) {
+      return court.slots?.[d] || court.slots?.["Mar 10"] || [];
+    }
+    return g?.slots?.[d] || g?.slots?.["Mar 10"] || [];
+  };
+
+  const featGrounds = [...GROUNDS].sort((a,b) => b.rating-a.rating).slice(0,5);
+
+  /* amenity icon helper */
+  const AmenityIcon = ({name}) => {
+    const I = AMENITY_ICONS[name] || Shield;
+    return <I size={11} strokeWidth={2}/>;
+  };
+
+  return (
+    <>
+      <style>{css}</style>
+      {toast && (
+        <div className="toast">
+          <CheckCircle size={14} color="var(--green-v)" strokeWidth={2.5}/>
+          {toast}
+        </div>
+      )}
+      <div className="app">
+
+        {/* ═══ RATING MODAL ═══ */}
+        {ratingModal && !ratingDone && (
+          <div className="rating-overlay" onClick={e=>{if(e.target.className==="rating-overlay")setRatingModal(false);}}>
+            <div className="rating-sheet">
+              <div className="rating-ico">
+                <Star size={26} color="var(--green-d)" strokeWidth={2}/>
+              </div>
+              <div className="rating-title">How was your game?</div>
+              <div className="rating-sub">
+                {ground?.name || "Your recent booking"} · {court ? court.name+" · " : ""}{date}
+              </div>
+              <div className="rating-stars">
+                {[1,2,3,4,5].map(n=>(
+                  <div key={n} className="rating-star"
+                    onMouseEnter={()=>setRatingHover(n)}
+                    onMouseLeave={()=>setRatingHover(0)}
+                    onClick={()=>setRatingVal(n)}>
+                    <Star size={38}
+                      color={(ratingHover||ratingVal)>=n?"#F59E0B":"#E5E7EB"}
+                      fill={(ratingHover||ratingVal)>=n?"#F59E0B":"#E5E7EB"}
+                      strokeWidth={1}/>
+                  </div>
+                ))}
+              </div>
+              <div className="rating-labels">
+                <span>Poor</span><span>Average</span><span>Excellent</span>
+              </div>
+              {ratingVal > 0 && (
+                <textarea className="rating-textarea"
+                  placeholder={ratingVal>=4 ? "What did you love? (optional)" : "What could be improved? (optional)"}/>
+              )}
+              <button className="rating-submit" disabled={ratingVal===0}
+                style={ratingVal===0?{opacity:.4,cursor:"not-allowed"}:{}}
+                onClick={()=>{setRatingDone(true);setRatingModal(false);showToast("Thanks for your rating! ⭐");}}>
+                Submit Rating
+              </button>
+              <button className="rating-skip" onClick={()=>setRatingModal(false)}>Skip for now</button>
+            </div>
+          </div>
+        )}
+
+        {/* ═══ SPLASH ═══ */}
+        {screen === "splash" && (
+          <div className="screen active splash">
+            <div className="splash-bg-grad"/>
+            <div className="splash-glow"/>
+            {/* Paddle racket floating image */}
+            <div className="splash-racket-wrap">
+              <img
+                className="splash-racket-img"
+                src="https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=600&q=80"
+                alt="paddle"
+              />
+            </div>
+            <div className="splash-inner">
+              <div className="splash-pill">
+                <div className="splash-pill-dot"/>
+                Live in Karachi
+              </div>
+              <div className="splash-logo">Out<em>field</em></div>
+              <div className="splash-tagline">Book. Show up. Play.</div>
+              <div className="splash-sport-pills">
+                {["Cricket","Football","Paddle","Basketball"].map(s=>(
+                  <div key={s} className="splash-sport-pill">{s}</div>
+                ))}
+              </div>
+            </div>
+            <div className="splash-loader">
+              <div className="splash-bar-wrap"><div className="splash-bar-fill"/></div>
+            </div>
+          </div>
+        )}
+
+        {/* ═══ ONBOARD ═══ */}
+        {screen === "onboard" && (
+          <div className="screen active onboard fade">
+            <div className="ob-bg">
+              <img src="https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?w=700&q=80" alt=""/>
+              <div className="ob-bg-fade"/>
+            </div>
+
+            {/* Top logo badge */}
+            <div className="ob-top-badge">
+              <div className="ob-live-dot"/>
+              <div className="ob-top-logo">Out<em>field</em></div>
+            </div>
+
+            <div className="ob-content">
+              <div className="ob-mid">
+                <div className="ob-pretag">Find your field. Own your game.</div>
+                <div className="ob-h">Book grounds.<br/><em>Find your game.</em></div>
+                <div className="ob-sub">No more calling around. Browse real-time availability, book your slot, and find teammates — all in one place.</div>
+
+                {/* Stats row */}
+                <div className="ob-stats">
+                  {[["200+","Grounds"],["11","Sports"],["24/7","Booking"]].map(([n,l])=>(
+                    <div key={l} className="ob-stat">
+                      <div className="ob-stat-n">{n}</div>
+                      <div className="ob-stat-l">{l}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Sports tags scroll */}
+                <div className="ob-sports-scroll">
+                  {SPORTS.filter(s=>s.id!=="all").map(s=>(
+                    <div key={s.id} className="ob-sport-tag" style={{borderColor:`${s.bg}50`,background:`${s.bg}20`,color:s.fg}}>
+                      <s.Icon size={10} strokeWidth={2}/>{s.label}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="ob-divider"/>
+
+                {/* Role selector */}
+                <div className="ob-role-label">I want to</div>
+                <div className="ob-roles">
+                  <div className="ob-role-card player" onClick={()=>{setScreen("home");setNav("home");}}>
+                    <div className="ob-role-ico">
+                      <Users size={20} color="var(--green-v)" strokeWidth={2}/>
+                    </div>
+                    <div className="ob-role-title">Book a Ground</div>
+                    <div className="ob-role-desc">Browse, compare & book sports venues near you</div>
+                    <div className="ob-role-arrow">
+                      <ChevronRight size={13} color="var(--green-v)" strokeWidth={2.5}/>
+                    </div>
+                  </div>
+                  <div className="ob-role-card owner" onClick={()=>{setScreen("owner");setNav("home");}}>
+                    <div className="ob-role-ico">
+                      <MapPin size={20} color="var(--orange)" strokeWidth={2}/>
+                    </div>
+                    <div className="ob-role-title">List My Ground</div>
+                    <div className="ob-role-desc">Get bookings & manage your venue for free</div>
+                    <div className="ob-role-arrow">
+                      <ChevronRight size={13} color="var(--orange)" strokeWidth={2.5}/>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ═══ HOME ═══ */}
+        {screen === "home" && (
+          <div className="screen active home fade">
+            <div className="home-head">
+              <div className="home-head-blob"/><div className="home-head-blob2"/>
+              <div className="hrow">
+                <div>
+                  <div className="hgreet">Good evening</div>
+                  <div className="hname">Find a Ground</div>
+                  <div className="hloc">
+                    <MapPin size={10} color="rgba(255,255,255,.35)" strokeWidth={2}/> Karachi, Pakistan
+                  </div>
+                </div>
+                <div className="head-actions">
+                  <div className="icon-btn">
+                    <Bell size={17} color="rgba(255,255,255,.7)" strokeWidth={2}/>
+                    <div className="notif-dot"/>
+                  </div>
+                </div>
+              </div>
+              <div className="search-wrap">
+                <div className="search-row">
+                  <div className="search-box">
+                    <Search size={15} color="rgba(255,255,255,.3)" strokeWidth={2}/>
+                    <input className="search-input" placeholder="Search grounds, areas..."
+                      value={search} onChange={e=>setSearch(e.target.value)}/>
+                    {search && <X size={13} color="rgba(255,255,255,.3)" strokeWidth={2} style={{cursor:"pointer"}} onClick={()=>setSearch("")}/>}
+                  </div>
+                  <div className="filter-btn">
+                    <SlidersHorizontal size={16} color="rgba(255,255,255,.65)" strokeWidth={2}/>
+                  </div>
+                </div>
+              </div>
+              <div style={{height:28}}/>
+            </div>
+
+            {/* Hero Carousel */}
+            <div className="hero-section">
+              <div className="section-header">
+                <div className="section-title">
+                  <span style={{display:"flex",alignItems:"center",gap:6}}>
+                    <Trophy size={14} color="var(--amber)" strokeWidth={2.5}/>
+                    Top Rated Near You
+                  </span>
+                </div>
+                <div className="section-link">
+                  See all <ChevronRight size={13} strokeWidth={2.5}/>
+                </div>
+              </div>
+              <div className="hero-scroll">
+                {featGrounds.map((g,i) => {
+                  const hasLfp = getSlots(g,"Mar 10").some(s=>s.lfp);
+                  return (
+                    <div key={g.id} className="hero-card" onClick={()=>openGround(g)}>
+                      <img className="hero-card-img" src={gImg(g)} alt={g.name}
+                        onError={e=>{e.target.style.display="none";}}/>
+                      <div className="hero-grad"/>
+                      <div className="hero-top-row">
+                        <div className="hero-rating-pill">
+                          <Star size={9} color="var(--amber)" fill="var(--amber)"/> {g.rating}
+                        </div>
+                        <div className="hero-price-pill">Rs {g.priceFrom.toLocaleString()}</div>
+                      </div>
+                      {hasLfp && <div className="hero-lfp-pill">Need Players</div>}
+                      <div className="hero-bottom">
+                        <div className="hero-name">{g.name}</div>
+                        <div className="hero-meta">
+                          <div className="hero-meta-item"><MapPin size={9} strokeWidth={2}/>{g.area}</div>
+                          <div className="hero-meta-item"><Navigation size={9} strokeWidth={2}/>{g.distance}</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="hero-dots">
+                {featGrounds.map((_,i)=>(
+                  <div key={i} className={`hero-dot ${heroIdx===i?"on":""}`} onClick={()=>setHeroIdx(i)}/>
+                ))}
+              </div>
+            </div>
+
+            {/* Sport Filter */}
+            <div className="sport-section">
+              <div className="sport-scroll">
+                {SPORTS.map(s=>{
+                  const on = sport===s.id;
+                  return (
+                    <div key={s.id} className={`sport-chip ${on?"on":""}`}
+                      style={on?{background:s.bg}:{}}
+                      onClick={()=>setSport(s.id)}>
+                      <div className="sport-chip-ico" style={{background:on?"rgba(255,255,255,.15)":s.bg}}>
+                        <s.Icon size={13} color={s.fg} strokeWidth={2}/>
+                      </div>
+                      <span className="sport-chip-label" style={on?{color:s.fg}:{}}>{s.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Ground List */}
+            <div className="glist-section">
+              <div className="section-header">
+                <div className="section-title">All Grounds</div>
+                <div className="section-link" style={{color:"var(--ink3)",fontSize:11}}>
+                  {filtered.length} found
+                </div>
+              </div>
+              {filtered.length===0 && (
+                <div className="empty">
+                  <div className="empty-ico-wrap"><Search size={24} color="var(--ink4)" strokeWidth={1.5}/></div>
+                  <div className="empty-t">No grounds found</div>
+                  <div className="empty-s">Try a different sport or search term</div>
+                </div>
+              )}
+              <div className="glist">
+                {filtered.map(g => {
+                  const slots = getSlots(g,"Mar 10");
+                  const freeN = slots.filter(s=>!s.booked).length;
+                  const hasLfp = slots.some(s=>s.lfp);
+                  return (
+                    <div key={g.id} className="gcard" onClick={()=>openGround(g)}>
+                      <div className="gcard-img-wrap">
+                        <img className="gcard-img" src={gImg(g)} alt={g.name} onError={e=>{e.target.style.display="none";}}/>
+                        <div className="gcard-overlay"/>
+                        <div className="gcard-tl">
+                          <div className="img-pill">
+                            <Clock size={9} strokeWidth={2}/> {g.openFrom}–{g.openTill}
+                          </div>
+                          {hasLfp && <div className="img-pill orange">Need Players</div>}
+                        </div>
+                        <div className="gcard-tr">
+                          <div className="img-pill" style={{background:"rgba(0,0,0,.55)"}}>
+                            <Star size={9} color="var(--amber)" fill="var(--amber)" strokeWidth={0}/> {g.rating}
+                          </div>
+                        </div>
+                        <div className="gcard-bl">
+                          <div className="gcard-name">{g.name}</div>
+                          <div className="gcard-area">
+                            <MapPin size={9} color="rgba(255,255,255,.6)" strokeWidth={2}/> {g.area}
+                          </div>
+                        </div>
+                        <div className="gcard-br">
+                          <div className="img-pill green">
+                            from Rs {g.priceFrom.toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="gcard-body">
+                        <div className="gcard-info-row">
+                          <div className="gcard-info-item">
+                            <Navigation size={12} color="var(--ink4)" strokeWidth={2}/> {g.distance}
+                          </div>
+                          <div className="gcard-info-item">
+                            <Users size={12} color="var(--ink4)" strokeWidth={2}/> {g.reviews} reviews
+                          </div>
+                        </div>
+                        <div className="gcard-amenities">
+                          {g.amenities.map(a => (
+                            <div key={a} className="amenity-chip">
+                              <AmenityIcon name={a}/> {a}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="slot-dots-row">
+                          {slots.slice(0,9).map((s,i)=>(
+                            <div key={i} className={`sdot ${s.lfp?"lfp":s.booked?"bkd":"free"}`}/>
+                          ))}
+                          <span className="sdot-text">{freeN} slots free today</span>
+                        </div>
+                        <div className="gcard-bottom">
+                          <div className="sports-mini">
+                            {g.sports.map(sid=>{
+                              const sp=sportObj(sid);
+                              return (
+                                <div key={sid} className="sport-dot-chip" style={{background:sp.bg}} title={sp.label}>
+                                  <sp.Icon size={12} color={sp.fg} strokeWidth={2}/>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div className="gcard-price">Rs {g.priceFrom.toLocaleString()}<span>/slot</span></div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ═══ DETAIL ═══ */}
+        {screen === "detail" && ground && (
+          <div className="screen active detail fade">
+            <div style={{overflowY:"auto",flex:1,paddingBottom:98}}>
+              <div className="detail-hero">
+                {gImg(ground)
+                  ? <img src={gImg(ground)} alt={ground.name}/>
+                  : <div className="detail-hero-ph"><Activity size={64} color="rgba(255,255,255,.2)" strokeWidth={1}/></div>}
+                <div className="detail-hero-grad"/>
+                <div className="detail-hero-actions">
+                  <button className="dhero-btn" onClick={()=>setScreen("home")}>
+                    <ArrowLeft size={18} strokeWidth={2}/>
+                  </button>
+                  <div className="dhero-actions-right">
+                    <button className="dhero-btn" onClick={()=>{setFaved(p=>({...p,[ground.id]:!p[ground.id]}));showToast(faved[ground.id]?"Removed from favourites":"Added to favourites");}}>
+                      <Heart size={16} strokeWidth={2} fill={faved[ground.id]?"#ef4444":"none"} color={faved[ground.id]?"#ef4444":"#fff"}/>
+                    </button>
+                    <button className="dhero-btn" onClick={()=>showToast("Share link copied!")}>
+                      <Share2 size={16} strokeWidth={2}/>
+                    </button>
+                  </div>
+                </div>
+                <div className="detail-hero-bottom">
+                  <div className="detail-hero-name">{ground.name}</div>
+                  <div className="detail-hero-meta">
+                    <div className="detail-hero-meta-item"><MapPin size={10} strokeWidth={2}/>{ground.area}</div>
+                    <div className="detail-hero-meta-item"><Navigation size={10} strokeWidth={2}/>{ground.distance}</div>
+                    <div className="detail-hero-meta-item">
+                      <Star size={10} color="var(--amber)" fill="var(--amber)" strokeWidth={0}/>
+                      {ground.rating} ({ground.reviews})
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="detail-sheet">
+                <div className="detail-stat-row">
+                  <div className="detail-stat">
+                    <div className="dstat-label">Opens</div>
+                    <div className="dstat-val">{ground.openFrom}</div>
+                  </div>
+                  <div className="detail-stat">
+                    <div className="dstat-label">Closes</div>
+                    <div className="dstat-val">{ground.openTill}</div>
+                  </div>
+                  <div className="detail-stat">
+                    <div className="dstat-label">From</div>
+                    <div className="dstat-val">Rs {ground.priceFrom.toLocaleString()}</div>
+                  </div>
+                </div>
+                <div className="detail-tags-row">
+                  {ground.amenities.map(a=>(
+                    <div key={a} className="dtag"><AmenityIcon name={a}/>{a}</div>
+                  ))}
+                </div>
+                <div className="detail-desc">{ground.description}</div>
+                <div className="detail-sec">Sports Available</div>
+                <div className="sports-row">
+                  {ground.sports.map(sid=>{
+                    const sp=sportObj(sid);
+                    return (
+                      <div key={sid} className="sport-pill-detail"
+                        style={{background:`${sp.bg}18`,borderColor:`${sp.bg}40`,color:sp.bg}}>
+                        <sp.Icon size={14} color={sp.bg} strokeWidth={2}/> {sp.label}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* ── COURT PICKER for facilities ── */}
+                {ground.isFacility && ground.courts && (
+                  <>
+                    <div className="detail-sec" style={{display:"flex",alignItems:"center",gap:7}}>
+                      Select a Ground
+                      <span style={{fontSize:10,fontWeight:600,color:"var(--ink4)",background:"var(--bg)",border:"1px solid var(--border)",borderRadius:100,padding:"2px 8px"}}>
+                        {ground.courts.length} available
+                      </span>
+                    </div>
+                    <div className="court-picker-banner">
+                      <div className="court-picker-title">{ground.name}</div>
+                      <div className="court-picker-sub">Pick the specific ground you want to book below</div>
+                    </div>
+                    <div className="court-pick-cards">
+                      {ground.courts.map(c=>{
+                        const sp = sportObj(c.sports[0]);
+                        const freeSlots = (c.slots?.["Mar 10"]||[]).filter(s=>!s.booked).length;
+                        return (
+                          <div key={c.id} className={`court-pick-card ${court?.id===c.id?"sel":""}`}
+                            onClick={()=>{setCourt(c);setSlot(null);}}>
+                            <div className="court-pick-ico" style={{background:`${sp.bg}20`}}>
+                              <sp.Icon size={18} color={sp.bg} strokeWidth={2}/>
+                            </div>
+                            <div style={{flex:1}}>
+                              <div className="court-pick-name">{c.name}</div>
+                              <div className="court-pick-meta">
+                                <div className="court-pick-tag"><Activity size={9} strokeWidth={2}/>{c.surface}</div>
+                                <div className="court-pick-tag"><Users size={9} strokeWidth={2}/>{c.capacity} players</div>
+                                <div className="court-pick-tag" style={{color:freeSlots>0?"var(--green-d)":"var(--ink4)"}}>
+                                  <CheckCircle size={9} strokeWidth={2}/>{freeSlots} free today
+                                </div>
+                              </div>
+                              <div style={{display:"flex",gap:5,marginTop:5,flexWrap:"wrap"}}>
+                                {c.sports.map(sid=>{
+                                  const s2=sportObj(sid);
+                                  return <span key={sid} style={{fontSize:9,fontWeight:700,background:`${s2.bg}15`,color:s2.bg,border:`1px solid ${s2.bg}30`,borderRadius:100,padding:"2px 7px",display:"flex",alignItems:"center",gap:3}}><s2.Icon size={8} strokeWidth={2}/>{s2.label}</span>;
+                                })}
+                              </div>
+                            </div>
+                            <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
+                              <div className="court-pick-price">Rs {c.priceBase.toLocaleString()}</div>
+                              <ChevronRight size={15} color={court?.id===c.id?"var(--green-d)":"var(--ink4)"} strokeWidth={2.5}/>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+                <div className="detail-sec">Location</div>
+                <div className="map-block">
+                  <Map size={26} color="#2563EB" strokeWidth={1.5}/>
+                  <div className="map-block-t">{ground.area}, Karachi</div>
+                  <div className="map-block-s">Tap to open Google Maps</div>
+                </div>
+                <div className="detail-sec">Select Date</div>
+                <div className="date-row">
+                  {DATES.map(d=>(
+                    <button key={d} className={`date-btn ${date===d?"on":""}`}
+                      onClick={()=>{setDate(d);setSlot(null);}}>{d}</button>
+                  ))}
+                </div>
+
+                {/* If facility but no court selected yet */}
+                {ground.isFacility && !court && (
+                  <div className="empty" style={{padding:"28px 18px"}}>
+                    <div className="empty-ico-wrap"><Calendar size={22} color="var(--ink4)" strokeWidth={1.5}/></div>
+                    <div className="empty-t">Select a ground above</div>
+                    <div className="empty-s">Pick which ground you want to book to see available slots</div>
+                  </div>
+                )}
+
+                {/* Show slots only if not a facility OR a court has been selected */}
+                {(!ground.isFacility || court) && (<>
+                  {court && (
+                    <div style={{display:"flex",alignItems:"center",gap:8,background:"var(--green-l)",border:"1px solid var(--green)",borderRadius:10,padding:"8px 13px",marginBottom:10}}>
+                      <CheckCircle size={13} color="var(--green-d)" strokeWidth={2.5}/>
+                      <div style={{fontSize:12,fontWeight:700,color:"var(--green-d)"}}>Booking: {court.name}</div>
+                      <div style={{marginLeft:"auto",fontSize:10,color:"var(--green-d)",cursor:"pointer",fontWeight:600}}
+                        onClick={()=>{setCourt(null);setSlot(null);}}>Change</div>
+                    </div>
+                  )}
+                <div className="slot-legend">
+                  <div className="sl"><div className="sl-sq" style={{background:"#22C55E"}}/>Available</div>
+                  <div className="sl"><div className="sl-sq" style={{background:"#FCA5A5"}}/>Booked</div>
+                  <div className="sl"><div className="sl-sq" style={{background:"var(--orange)"}}/>Need Players</div>
+                  <div style={{marginLeft:"auto",fontSize:10,color:"var(--green-d)",fontWeight:700}}>
+                    {getSlots(ground,date).filter(s=>!s.booked).length} free
+                  </div>
+                </div>
+                <div className="late-badge" style={{marginBottom:10}}>
+                  <Clock size={10} strokeWidth={2}/> Late booking allowed up to 10 mins into slot
+                </div>
+                <div className="slots-grid">
+                  {getSlots(ground,date).map((s,i)=>{
+                    const isLfp = s.booked&&s.lfp;
+                    const jk = `d-${ground.id}-${date}-${i}`;
+                    const jnd = joined[jk];
+                    const spotsLeft = Math.max(0,(s.need||0)-(s.joined||0)-(jnd?1:0));
+                    return (
+                      <div key={i}
+                        className={`slot-card ${isLfp?"lfp":s.booked?"bkd":"free"} ${slot===i?"sel":""}`}
+                        onClick={()=>{if(!s.booked)setSlot(slot===i?null:i);}}>
+                        <div className="slot-time">{s.time}</div>
+                        <div className="slot-status" style={{color:isLfp?"var(--orange)":s.booked?"var(--ink4)":"var(--green)"}}>
+                          {isLfp ? (
+                            <span style={{display:"flex",alignItems:"center",gap:3}}>
+                              <UserPlus size={10} strokeWidth={2}/>Need Players
+                            </span>
+                          ) : s.booked ? (
+                            <span style={{display:"flex",alignItems:"center",gap:3}}>
+                              <X size={10} strokeWidth={2.5}/>Booked
+                            </span>
+                          ) : (
+                            <span style={{display:"flex",alignItems:"center",gap:3}}>
+                              <CheckCircle size={10} strokeWidth={2.5}/>Available
+                            </span>
+                          )}
+                        </div>
+                        <div className="slot-price">Rs {s.price?.toLocaleString()}</div>
+                        {isLfp && (
+                          <>
+                            <div className="lfp-badge">
+                              <Users size={9} strokeWidth={2}/> {spotsLeft} spot{spotsLeft!==1?"s":""} left
+                            </div>
+                            <button className={`join-btn ${jnd?"done":""}`}
+                              onClick={e=>{e.stopPropagation();const nv=!jnd;setJoined(p=>({...p,[jk]:nv}));showToast(nv?"Request sent! You'll hear back soon.":"Request cancelled");}}>
+                              {jnd ? <><Check size={10} strokeWidth={2.5}/>Requested</> : <><UserPlus size={10} strokeWidth={2}/>I'm in!</>}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                {slot!==null && (
+                  <div className="lfp-toggle">
+                    <div className="lfp-toggle-left">
+                      <div className="lfp-toggle-t" style={{display:"flex",alignItems:"center",gap:6}}>
+                        <UserPlus size={14} color="var(--orange)" strokeWidth={2}/> Looking for players?
+                      </div>
+                      <div className="lfp-toggle-s">Alert others — they can request to join your slot</div>
+                    </div>
+                    <button className={`sw ${lfp?"on":"off"}`} onClick={()=>setLfp(!lfp)}>
+                      <div className="sw-knob"/>
+                    </button>
+                  </div>
+                )}
+                </>)}
+              </div>
+            </div>
+            <div className="book-bar">
+              <button className="book-btn"
+                disabled={slot===null || (ground.isFacility && !court)}
+                onClick={()=>setScreen("confirm")}>
+                {ground.isFacility && !court
+                  ? "Select a Ground First"
+                  : slot!==null
+                    ? `Book ${getSlots(ground,date)[slot].time}${court?" — "+court.name:""}`
+                    : "Select a Slot to Book"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ═══ CONFIRM ═══ */}
+        {screen === "confirm" && ground && curSlot && (
+          <div className="screen active confirm fade">
+            <div className="confirm-head">
+              <div className="confirm-head-glow"/>
+              <button className="confirm-back-btn" onClick={()=>setScreen("detail")}>
+                <ArrowLeft size={14} strokeWidth={2}/> Back
+              </button>
+              <div className="confirm-title">Confirm Booking</div>
+              <div className="confirm-sub">Review your details before confirming</div>
+            </div>
+            <div className="confirm-body">
+              <div className="c-block">
+                <div className="c-block-title">Booking Summary</div>
+                {[
+                  ["Facility", ground.name],
+                  ...(court ? [["Ground", court.name]] : []),
+                  ["Date", `${date}, 2025`],
+                  ["Time Slot", curSlot.time],
+                  ["Location", ground.area],
+                  ...(lfp ? [["Matchmaking","Alert ON"]] : []),
+                ].map(([l,v]) => (
+                  <div key={l} className="c-row">
+                    <span className="c-label">{l}</span>
+                    <span className="c-val" style={l==="Matchmaking"?{color:"var(--orange)"}:{}}>{v}</span>
+                  </div>
+                ))}
+                <div className="c-row">
+                  <span className="c-label">Total Amount</span>
+                  <span className="c-total">Rs {curSlot.price?.toLocaleString()}</span>
+                </div>
+              </div>
+              <div className="c-block">
+                <div className="c-block-title">Payment Method</div>
+                <div className="pay-list">
+                  {[
+                    {id:"cash",   ico:"💵", label:"Pay at Ground"},
+                    {id:"easy",   ico:"📱", label:"EasyPaisa"},
+                    {id:"sada",   ico:"💳", label:"SadaPay"},
+                    {id:"jazz",   ico:"🎵", label:"JazzCash"},
+                  ].map(p=>(
+                    <div key={p.id} className={`pay-item ${pay===p.id?"sel":""}`} onClick={()=>setPay(p.id)}>
+                      <div className="pay-ico-wrap">{p.ico}</div>
+                      <span className="pay-label">{p.label}</span>
+                      <div className={`pay-radio ${pay===p.id?"sel":""}`}/>
+                    </div>
+                  ))}
+                </div>
+                {pay!=="cash" && (
+                  <div className="soon-note">
+                    <AlertCircle size={14} color="#D97706" strokeWidth={2}/>
+                    <span>In-app payments launching soon. You'll be redirected to the payment app.</span>
+                  </div>
+                )}
+              </div>
+              <button className="book-btn" onClick={()=>setScreen("success")}>
+                Confirm Booking · Rs {curSlot.price?.toLocaleString()}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ═══ SUCCESS ═══ */}
+        {screen === "success" && (
+          <div className="screen active success fade">
+            <div className="success-ring">
+              <Check size={40} color="#fff" strokeWidth={3}/>
+            </div>
+            <div className="success-title">You're booked!</div>
+            <div className="success-sub">
+              Slot confirmed. Just show up and play.
+              {lfp && <><br/><span style={{color:"var(--orange)",fontWeight:700}}>Matchmaking alert is live!</span></>}
+            </div>
+            <div className="ref-box">
+              <div className="ref-label">Booking Reference</div>
+              <div className="ref-code">{bookRef}</div>
+            </div>
+            {ground && curSlot && (
+              <div className="success-detail-box">
+                {[
+                  [MapPin, ground.name],
+                  [Clock, curSlot.time],
+                  [Calendar, `${date}, 2025`],
+                  [Navigation, ground.area],
+                ].map(([I,v],i)=>(
+                  <div key={i} className="sdb-row"><I size={13} color="var(--ink4)" strokeWidth={2}/>{v}</div>
+                ))}
+              </div>
+            )}
+            <button className="book-btn" style={{marginTop:22,width:"100%"}}
+              onClick={()=>{setScreen("home");setNav("home");setGround(null);setSlot(null);setLfp(false);}}>
+              Back to Home
+            </button>
+            {!ratingDone && (
+              <div style={{marginTop:10,background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}
+                onClick={()=>setRatingModal(true)}>
+                <Star size={18} color="#F59E0B" fill="#F59E0B" strokeWidth={0}/>
+                <div>
+                  <div style={{fontSize:12,fontWeight:800,color:"#92400E"}}>Rate your experience after your game</div>
+                  <div style={{fontSize:10,color:"#B45309",marginTop:2}}>You'll get a notification when your slot ends</div>
+                </div>
+                <ChevronRight size={14} color="#92400E" style={{marginLeft:"auto"}} strokeWidth={2.5}/>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ═══ MATCHMAKING ═══ */}
+        {screen === "match" && (
+          <div className="screen active match fade">
+            <div className="match-head">
+              <div className="match-glow"/>
+              <div className="match-title" style={{display:"flex",alignItems:"center",gap:9}}>
+                <div style={{width:34,height:34,borderRadius:10,background:"rgba(249,115,22,.18)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <UserPlus size={17} color="var(--orange)" strokeWidth={2}/>
+                </div>
+                Matchmaking
+              </div>
+              <div className="match-sub">Find players or challenge a team</div>
+            </div>
+            <div style={{height:12}}/>
+
+            {/* ── TABS ── */}
+            <div className="match-tabs">
+              <button className={`match-tab ${matchTab==="players"?"on":""}`} onClick={()=>setMatchTab("players")}>
+                <UserPlus size={13} strokeWidth={2}/> Find Players
+              </button>
+              <button className={`match-tab ${matchTab==="teams"?"on":""}`} onClick={()=>setMatchTab("teams")}>
+                <Users size={13} strokeWidth={2}/> Team vs Team
+              </button>
+            </div>
+
+            <div style={{height:10}}/>
+
+            {/* ── FIND PLAYERS TAB ── */}
+            {matchTab === "players" && (
+              <div style={{padding:"0 18px"}}>
+                {allLfp.length === 0 ? (
+                  <div className="empty">
+                    <div className="empty-ico-wrap"><UserPlus size={24} color="var(--ink4)" strokeWidth={1.5}/></div>
+                    <div className="empty-t">No open games yet</div>
+                    <div className="empty-s">Book a slot and toggle "Looking for players" to appear here</div>
+                  </div>
+                ) : allLfp.map((s,i)=>{
+                  const jk = `m-${s.groundId}-${s.dateLabel}-${i}`;
+                  const jnd = joined[jk];
+                  const sp = sportObj(s.sport);
+                  const spotsLeft = Math.max(0,(s.need||0)-(s.joined||0)-(jnd?1:0));
+                  return (
+                    <div key={i} className="mc">
+                      <div className="mc-top">
+                        <div style={{flex:1}}>
+                          <div className="mc-name">{s.groundName}</div>
+                          <div style={{display:"flex",alignItems:"center",gap:5,marginTop:4}}>
+                            <span className={`player-style-badge ${s.style||"casual"}`}>
+                              {s.style==="competitive"?"🏆 Competitive":"😊 Casual"}
+                            </span>
+                            {s.position && (
+                              <span style={{fontSize:9,color:"var(--ink4)",fontWeight:600}}>{s.position}</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="mc-sport-tag"
+                          style={{background:`${sp.bg}15`,color:sp.bg,border:`1px solid ${sp.bg}30`}}>
+                          <div style={{display:"flex",alignItems:"center",gap:4}}>
+                            <sp.Icon size={10} color={sp.bg} strokeWidth={2}/> {sp.label}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mc-detail">
+                        <div className="mc-detail-row"><Calendar size={11} strokeWidth={2}/>{s.dateLabel} · {s.time}</div>
+                        <div className="mc-detail-row"><MapPin size={11} strokeWidth={2}/>{s.groundArea} · Booked by {s.bookedBy}</div>
+                      </div>
+                      <div className="mc-bottom">
+                        <div className="mc-avs">
+                          {Array.from({length:Math.min((s.joined||0)+(jnd?1:0),5)}).map((_,j)=>(
+                            <div key={j} className="mc-av">{String.fromCharCode(65+j)}</div>
+                          ))}
+                        </div>
+                        <div className="mc-spots">
+                          {spotsLeft>0?`${spotsLeft} spot${spotsLeft!==1?"s":""} needed`:"Full"}
+                        </div>
+                        <button className={`mc-join ${jnd?"done":""}`}
+                          onClick={()=>{const nv=!jnd;setJoined(p=>({...p,[jk]:nv}));showToast(nv?"Request sent!":"Request cancelled");}}
+                          disabled={spotsLeft<=0&&!jnd}>
+                          {jnd ? <><Check size={11} strokeWidth={2.5}/>Requested</> : <><UserPlus size={11} strokeWidth={2}/>I'm in!</>}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ── TEAM VS TEAM TAB ── */}
+            {matchTab === "teams" && (
+              <div style={{padding:"0 18px"}}>
+                <div style={{fontSize:11,color:"var(--ink4)",fontWeight:500,marginBottom:12,lineHeight:1.5,background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:10,padding:"9px 12px",display:"flex",gap:7,alignItems:"flex-start"}}>
+                  <AlertCircle size={13} color="#F97316" strokeWidth={2} style={{flexShrink:0,marginTop:1}}/>
+                  <span>Teams listed below have a booked ground and are looking for an opponent. Request to challenge — the captain will accept or decline.</span>
+                </div>
+                {TEAM_CHALLENGES.map((tc)=>{
+                  const sp = sportObj(tc.sport);
+                  const reqKey = tc.id;
+                  const reqSent = teamReqs[reqKey];
+                  return (
+                    <div key={tc.id} className="tc">
+                      <div className="tc-banner" style={{background:`linear-gradient(90deg,${sp.bg},${sp.fg}55)`}}/>
+                      <div className="tc-body">
+                        <div className="tc-top">
+                          <div>
+                            <div className="tc-team">{tc.teamName}</div>
+                            <div style={{display:"flex",alignItems:"center",gap:6,marginTop:3}}>
+                              <div style={{display:"flex",alignItems:"center",gap:4,fontSize:10,fontWeight:700,color:sp.bg}}>
+                                <sp.Icon size={10} strokeWidth={2}/>{sp.label}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="tc-format-tag">{tc.format}</div>
+                        </div>
+                        <div className="tc-detail">
+                          <div className="tc-detail-row"><MapPin size={11} strokeWidth={2}/>{tc.groundName} · {tc.area}</div>
+                          <div className="tc-detail-row"><Calendar size={11} strokeWidth={2}/>{tc.date} · {tc.time}</div>
+                          <div className="tc-detail-row"><Users size={11} strokeWidth={2}/>{tc.teamSize} players per side needed</div>
+                        </div>
+
+                        {reqSent ? (
+                          /* Captain view — sees incoming challenge request */
+                          <div>
+                            <div style={{fontSize:11,color:"var(--ink3)",fontWeight:600,marginBottom:8}}>📩 Challenge request received:</div>
+                            <div className="tc-captain-row">
+                              <div className="tc-captain-av">M</div>
+                              <div>
+                                <div className="tc-captain-name">Maaz's Team</div>
+                                <div className="tc-phone">📞 {tc.phone} · Tap to call before accepting</div>
+                              </div>
+                            </div>
+                            <div className="tc-accept-row">
+                              <button className="tc-reject"
+                                onClick={()=>{setTeamReqs(p=>({...p,[reqKey]:false}));showToast("Challenge declined");}}>
+                                Decline
+                              </button>
+                              <button className="tc-accept"
+                                onClick={()=>{showToast("Challenge accepted! Contact them to confirm.");}}>
+                                <Check size={13} strokeWidth={2.5}/> Accept Challenge
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          /* Player view — challenge button */
+                          <div>
+                            <div className="tc-captain-row" style={{marginBottom:0}}>
+                              <div className="tc-captain-av">{tc.captain[0]}</div>
+                              <div>
+                                <div className="tc-captain-name">Captain: {tc.captain}</div>
+                                <div className="tc-phone">Contact shown after acceptance</div>
+                              </div>
+                            </div>
+                            <div style={{height:10}}/>
+                            <button className="tc-challenge-btn"
+                              onClick={()=>{setTeamReqs(p=>({...p,[reqKey]:true}));showToast("Challenge sent! Waiting for captain to respond.");}}>
+                              <Swords size={13} strokeWidth={2}/> Challenge This Team
+                            </button>
+                            <div className="tc-pending-note">
+                              <Shield size={10} strokeWidth={2}/> Captain's number revealed only after acceptance
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ═══ EXPLORE ═══ */}
+        {screen === "explore" && (
+          <div className="screen active explore fade">
+            <div className="exp-head">
+              <div className="exp-title" style={{display:"flex",alignItems:"center",gap:9}}>
+                <div style={{width:34,height:34,borderRadius:10,background:"rgba(255,255,255,.08)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <Compass size={17} color="#fff" strokeWidth={2}/>
+                </div>
+                Explore Grounds
+              </div>
+              <div className="exp-sub">Browse all venues across Karachi</div>
+            </div>
+            <div style={{height:14}}/>
+            <div className="sport-section" style={{paddingBottom:8}}>
+              <div className="sport-scroll">
+                {SPORTS.map(s=>{
+                  const on=sport===s.id;
+                  return (
+                    <div key={s.id} className={`sport-chip ${on?"on":""}`}
+                      style={on?{background:s.bg}:{}} onClick={()=>setSport(s.id)}>
+                      <div className="sport-chip-ico" style={{background:on?"rgba(255,255,255,.15)":s.bg}}>
+                        <s.Icon size={13} color={s.fg} strokeWidth={2}/>
+                      </div>
+                      <span className="sport-chip-label" style={on?{color:s.fg}:{}}>{s.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div style={{padding:"8px 18px 0"}}>
+              <div className="search-box" style={{background:"#fff",border:"1.5px solid var(--border)"}}>
+                <Search size={14} color="var(--ink4)" strokeWidth={2}/>
+                <input className="search-input" style={{color:"var(--ink)"}} placeholder="Search by name or area..."
+                  value={search} onChange={e=>setSearch(e.target.value)}/>
+              </div>
+              <div style={{height:12}}/>
+              {filtered.length===0 && (
+                <div className="empty">
+                  <div className="empty-ico-wrap"><Search size={24} color="var(--ink4)" strokeWidth={1.5}/></div>
+                  <div className="empty-t">No results</div>
+                </div>
+              )}
+              <div className="glist">
+                {filtered.map(g=>(
+                  <div key={g.id} className="gcard" onClick={()=>openGround(g)}>
+                    <div className="gcard-img-wrap">
+                      <img className="gcard-img" src={gImg(g)} alt={g.name} onError={e=>{e.target.style.display="none";}}/>
+                      <div className="gcard-overlay"/>
+                      <div className="gcard-bl">
+                        <div className="gcard-name">{g.name}</div>
+                        <div className="gcard-area"><MapPin size={9} color="rgba(255,255,255,.6)" strokeWidth={2}/>{g.area}</div>
+                      </div>
+                      <div className="gcard-tr">
+                        <div className="img-pill"><Star size={9} color="var(--amber)" fill="var(--amber)" strokeWidth={0}/> {g.rating}</div>
+                      </div>
+                      <div className="gcard-br"><div className="img-pill green">Rs {g.priceFrom.toLocaleString()}</div></div>
+                    </div>
+                    <div className="gcard-body">
+                      <div className="gcard-info-row">
+                        <div className="gcard-info-item"><Navigation size={12} color="var(--ink4)" strokeWidth={2}/>{g.distance}</div>
+                        <div className="gcard-info-item"><Clock size={12} color="var(--ink4)" strokeWidth={2}/>{g.openFrom}–{g.openTill}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ═══ OWNER ═══ */}
+        {screen === "owner" && (
+          <div className="screen active owner fade">
+            <div className="owner-head">
+              <button style={{display:"flex",alignItems:"center",gap:5,background:"rgba(255,255,255,.08)",border:"none",borderRadius:9,padding:"7px 12px",color:"rgba(255,255,255,.6)",cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"Inter,sans-serif"}}
+                onClick={()=>{setScreen("home");setNav("home");}}>
+                <ArrowLeft size={14} strokeWidth={2}/> Back
+              </button>
+              <div className="owner-title">Ground Owner Portal</div>
+              <div className="owner-sub">Manage your listing & availability</div>
+            </div>
+
+            {/* Tabs */}
+            <div className="owner-tabs">
+              <button className={`owner-tab ${ownerSection==="list"?"on":""}`} onClick={()=>setOwnerSection("list")}>
+                <Upload size={13} strokeWidth={2}/> List Ground
+              </button>
+              <button className={`owner-tab ${ownerSection==="manage"?"on":""}`} onClick={()=>setOwnerSection("manage")}>
+                <X size={13} strokeWidth={2}/> Block Slots
+              </button>
+            </div>
+
+            <div style={{height:14}}/>
+            <div className="owner-body">
+
+              {/* ── LIST GROUND TAB ── */}
+              {ownerSection === "list" && (<>
+
+                {/* Step indicator */}
+                <div className="form-steps">
+                  {[
+                    {key:"facility", label:"Facility Info", num:"1"},
+                    {key:"courts",   label:"Individual Grounds", num:"2"},
+                  ].map(s=>(
+                    <div key={s.key}
+                      className={`form-step ${ownerFormStep===s.key?"on":ownerFormStep==="courts"&&s.key==="facility"?"done":""}`}
+                      onClick={()=>setOwnerFormStep(s.key)}>
+                      <div className="form-step-num">
+                        {ownerFormStep==="courts"&&s.key==="facility" ? <Check size={10} strokeWidth={3}/> : s.num}
+                      </div>
+                      {s.label}
+                    </div>
+                  ))}
+                </div>
+
+                {/* ── STEP 1: FACILITY INFO ── */}
+                {ownerFormStep === "facility" && (<>
+
+                  {/* Photos */}
+                  <div className="form-block">
+                    <div className="form-block-t">Facility Photos</div>
+                    <div className={`photo-drop ${ownerImg?"has-img":""}`}>
+                      <input ref={fileRef} type="file" accept="image/*" className="file-hidden"
+                        onChange={e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>setOwnerImg(ev.target.result);r.readAsDataURL(f);}}/>
+                      {ownerImg ? (
+                        <>
+                          <img className="photo-preview-img" src={ownerImg} alt=""/>
+                          <div className="photo-change-btn" onClick={()=>fileRef.current?.click()}>
+                            <Camera size={12} strokeWidth={2}/> Change Photo
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="upload-ico-wrap"><Upload size={22} color="var(--ink4)" strokeWidth={1.5}/></div>
+                          <div className="upload-t">Upload Facility Photos</div>
+                          <div className="upload-s">Up to 8 photos of your complex or facility<br/>High quality photos get 3× more bookings</div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Facility Details */}
+                  <div className="form-block">
+                    <div className="form-block-t">Facility Details</div>
+                    <div className="info-note" style={{marginBottom:12}}>
+                      <AlertCircle size={13} color="#92400E" strokeWidth={2} style={{flexShrink:0,marginTop:1}}/>
+                      This is your overall facility/complex profile. You will add each individual ground separately in Step 2.
+                    </div>
+                    {[
+                      ["Facility / Complex Name","e.g. DHA Sports Complex"],
+                      ["Owner / Manager Name","Your full name"],
+                      ["Area / Neighbourhood","e.g. DHA Phase 6, Karachi"],
+                      ["City","e.g. Karachi, Lahore, Islamabad"],
+                      ["Full Address","Street, Block, Area — shown to players for directions"],
+                      ["Google Maps Link","Paste your Google Maps share link"],
+                    ].map(([l,p])=>(
+                      <div key={l} className="fg"><label className="flbl">{l}</label><input className="finput" placeholder={p}/></div>
+                    ))}
+                    <div className="fg">
+                      <label className="flbl">Facility Description</label>
+                      <textarea className="finput fta" style={{height:80}} placeholder="Tell players about your complex — how many grounds, surface quality, facilities available, history..."/>
+                    </div>
+                    <div className="fg">
+                      <label className="flbl">Total Number of Grounds in this Facility</label>
+                      <input className="finput" type="number" placeholder="e.g. 5"/>
+                    </div>
+                    <div className="fg">
+                      <label className="flbl">Facility Type</label>
+                      <div className="slot-dur-opts">
+                        {["Indoor","Outdoor","Mixed"].map(t=>(
+                          <div key={t} className="slot-dur-opt" style={{fontSize:11}}>{t}</div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Operating Hours */}
+                  <div className="form-block">
+                    <div className="form-block-t">Facility Operating Hours</div>
+                    <div className="time-pair">
+                      <div className="fg"><label className="flbl">Opens At</label><input className="finput" type="time" defaultValue="06:00"/></div>
+                      <div className="fg"><label className="flbl">Closes At</label><input className="finput" type="time" defaultValue="23:00"/></div>
+                    </div>
+                    <div className="fg">
+                      <label className="flbl">Days Open</label>
+                      <div className="slot-dur-opts" style={{flexWrap:"wrap",gap:6}}>
+                        {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d=>(
+                          <div key={d} className="slot-dur-opt" style={{minWidth:40,padding:"8px 6px",fontSize:11}}>{d}</div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="fg">
+                      <label className="flbl">Break / Prayer Times (facility-wide)</label>
+                      <div style={{fontSize:11,color:"var(--ink4)",marginBottom:8}}>These apply to all grounds. You can add ground-specific breaks in Step 2.</div>
+                      {ownerBreaks.map((b,i)=>(
+                        <div key={i} className="break-row">
+                          <div className="break-label">Break {i+1}</div>
+                          <input className="block-time-input" type="time" value={b.from}
+                            onChange={e=>{const nb=[...ownerBreaks];nb[i].from=e.target.value;setOwnerBreaks(nb);}}/>
+                          <div style={{fontSize:11,color:"var(--ink4)",fontWeight:600}}>to</div>
+                          <input className="block-time-input" type="time" value={b.to}
+                            onChange={e=>{const nb=[...ownerBreaks];nb[i].to=e.target.value;setOwnerBreaks(nb);}}/>
+                          <button className="break-remove" onClick={()=>setOwnerBreaks(p=>p.filter((_,j)=>j!==i))}>
+                            <X size={12} color="#DC2626" strokeWidth={2.5}/>
+                          </button>
+                        </div>
+                      ))}
+                      <button style={{display:"flex",alignItems:"center",gap:5,background:"transparent",border:"1.5px dashed var(--border)",borderRadius:10,padding:"8px 14px",fontSize:11,fontWeight:700,color:"var(--ink4)",cursor:"pointer",width:"100%",justifyContent:"center",fontFamily:"Inter,sans-serif"}}
+                        onClick={()=>setOwnerBreaks(p=>[...p,{from:"13:00",to:"14:00"}])}>
+                        <Plus size={13} strokeWidth={2.5}/> Add Break Period
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Amenities */}
+                  <div className="form-block">
+                    <div className="form-block-t">Shared Amenities & Facilities</div>
+                    <div className="amenity-grid">
+                      {["Parking","Washrooms","Changing Room","Showers","Seating","Canteen","Café","Pro Shop","AC Lounge","Security","CCTV","First Aid","Prayer Area","Generator Backup","Wi-Fi","Spectator Area","Wheelchair Access","Valet Parking"].map(a=>(
+                        <div key={a} className={`amenity-toggle ${ownerAmenities.includes(a)?"on":""}`}
+                          onClick={()=>setOwnerAmenities(p=>p.includes(a)?p.filter(x=>x!==a):[...p,a])}>
+                          {ownerAmenities.includes(a) && <Check size={10} strokeWidth={3}/>} {a}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Cancellation */}
+                  <div className="form-block">
+                    <div className="form-block-t">Booking Policy</div>
+                    <div className="fg">
+                      <label className="flbl">Late Booking Grace Period</label>
+                      <div className="slot-dur-opts">
+                        {["Not allowed","5 mins","10 mins","15 mins"].map(t=>(
+                          <div key={t} className="slot-dur-opt" style={{fontSize:10,padding:"8px 6px"}}>{t}</div>
+                        ))}
+                      </div>
+                      <div style={{fontSize:10,color:"var(--ink4)",marginTop:6,lineHeight:1.5}}>
+                        Allow players to book a slot even after it has started — up to the selected grace period. Encourages walk-in bookings.
+                      </div>
+                    </div>
+                    <div className="fg">
+                      <label className="flbl">Cancellation Policy</label>
+                      <div className="slot-dur-opts">
+                        {["Flexible","Moderate","Strict"].map(p=>(
+                          <div key={p} className="slot-dur-opt" style={{fontSize:11}}>{p}</div>
+                        ))}
+                      </div>
+                      <div style={{fontSize:10,color:"var(--ink4)",marginTop:6}}>Flexible = free cancel 1hr before · Moderate = 3hr · Strict = no refund</div>
+                    </div>
+                    <div className="fg"><label className="flbl">Security Deposit per Booking (Rs, optional)</label>
+                      <input className="finput" type="number" placeholder="e.g. 500"/>
+                    </div>
+                    <div className="fg"><label className="flbl">Minimum Advance Booking Time</label>
+                      <div className="slot-dur-opts">
+                        {["30 min","1 hr","2 hr","Same day","1 day prior"].map(t=>(
+                          <div key={t} className="slot-dur-opt" style={{fontSize:10,padding:"8px 6px"}}>{t}</div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="fg"><label className="flbl">Facility Rules (optional)</label>
+                      <textarea className="finput fta" placeholder="e.g. No smoking, Proper sports footwear required, No outside food..."/>
+                    </div>
+                  </div>
+
+                  {/* Contact */}
+                  <div className="form-block">
+                    <div className="form-block-t">Contact</div>
+                    <div className="fg"><label className="flbl">Phone Number</label><input className="finput" type="tel" placeholder="03XX-XXXXXXX"/></div>
+                    <div className="fg"><label className="flbl">WhatsApp (optional)</label><input className="finput" type="tel" placeholder="03XX-XXXXXXX"/></div>
+                    <div className="fg"><label className="flbl">Instagram Handle (optional)</label><input className="finput" placeholder="@yourfacility"/></div>
+                    <div className="fg"><label className="flbl">Facebook Page (optional)</label><input className="finput" placeholder="facebook.com/yourfacility"/></div>
+                  </div>
+
+                  <button className="book-btn" onClick={()=>setOwnerFormStep("courts")}>
+                    Continue — Add Individual Grounds →
+                  </button>
+                  <div style={{textAlign:"center",fontSize:11,color:"var(--ink4)",marginTop:10,marginBottom:20}}>
+                    Step 1 of 2 · You will add each ground separately next
+                  </div>
+                </>)}
+
+                {/* ── STEP 2: INDIVIDUAL COURTS ── */}
+                {ownerFormStep === "courts" && (<>
+
+                  {/* Facility summary pill */}
+                  <div className="facility-summary">
+                    <div className="facility-summary-ico">
+                      <MapPin size={16} color="var(--green-v)" strokeWidth={2}/>
+                    </div>
+                    <div>
+                      <div className="facility-summary-name">Your Facility</div>
+                      <div className="facility-summary-sub">Tap Edit to go back and update facility info</div>
+                    </div>
+                    <div className="facility-summary-edit" onClick={()=>setOwnerFormStep("facility")}>Edit</div>
+                  </div>
+
+                  <div className="info-note" style={{marginBottom:14}}>
+                    <AlertCircle size={13} color="#92400E" strokeWidth={2} style={{flexShrink:0,marginTop:1}}/>
+                    <span>Add each ground separately. Each ground gets its own availability, sports, and pricing. Players will see them as individual listings under your facility name.</span>
+                  </div>
+
+                  {/* Court cards */}
+                  {ownerCourts.map((court, ci)=>(
+                    <div key={court.id} className="court-card">
+                      <div className="court-card-header">
+                        <div>
+                          <div className="court-card-title">Ground {ci+1}</div>
+                          <div style={{fontSize:10,color:"var(--ink4)",marginTop:2}}>Listed as a separate bookable ground</div>
+                        </div>
+                        {ownerCourts.length > 1 && (
+                          <button className="court-remove-btn"
+                            onClick={()=>setOwnerCourts(p=>p.filter(c=>c.id!==court.id))}>
+                            <X size={11} strokeWidth={2.5}/> Remove
+                          </button>
+                        )}
+                      </div>
+                      <div className="court-card-body">
+                        <div className="fg">
+                          <label className="flbl">Ground Name / Label</label>
+                          <input className="finput" placeholder="e.g. Cricket Ground, Football Pitch A, Tennis Court 1"
+                            value={court.name}
+                            onChange={e=>{const nc=[...ownerCourts];nc[ci].name=e.target.value;setOwnerCourts(nc);}}/>
+                        </div>
+                        <div className="fg">
+                          <label className="flbl">Sports Playable on This Ground</label>
+                          <div className="court-sport-mini">
+                            {SPORTS.filter(s=>s.id!=="all").map(s=>(
+                              <div key={s.id}
+                                className={`court-sport-btn ${court.sports.includes(s.id)?"on":""}`}
+                                onClick={()=>{
+                                  const nc=[...ownerCourts];
+                                  nc[ci].sports = court.sports.includes(s.id)
+                                    ? court.sports.filter(x=>x!==s.id)
+                                    : [...court.sports, s.id];
+                                  setOwnerCourts(nc);
+                                }}>
+                                <s.Icon size={10} strokeWidth={2}/>{s.label}
+                              </div>
+                            ))}
+                          </div>
+                          {court.sports.length > 1 && (
+                            <div className="info-note" style={{marginTop:8}}>
+                              <AlertCircle size={12} color="#92400E" strokeWidth={2} style={{flexShrink:0}}/>
+                              <span>Multi-sport ground: when any sport is booked for a slot, the entire slot is locked — preventing double-bookings across sports.</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="fg">
+                          <label className="flbl">Surface / Ground Type</label>
+                          <div className="slot-dur-opts" style={{flexWrap:"wrap",gap:6}}>
+                            {["Natural Grass","Artificial Turf","Hard Court","Clay","Wooden","Concrete","Synthetic"].map(t=>(
+                              <div key={t} className={`slot-dur-opt ${court.type===t?"on":""}`}
+                                style={{fontSize:10,padding:"7px 10px"}}
+                                onClick={()=>{const nc=[...ownerCourts];nc[ci].type=t;setOwnerCourts(nc);}}>
+                                {t}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="time-pair">
+                          <div className="fg">
+                            <label className="flbl">Capacity (players)</label>
+                            <input className="finput" type="number" placeholder="e.g. 22"
+                              value={court.capacity}
+                              onChange={e=>{const nc=[...ownerCourts];nc[ci].capacity=e.target.value;setOwnerCourts(nc);}}/>
+                          </div>
+                          <div className="fg">
+                            <label className="flbl">Slot Duration</label>
+                            <select className="finput" style={{cursor:"pointer"}}
+                              value={court.slotDur}
+                              onChange={e=>{const nc=[...ownerCourts];nc[ci].slotDur=e.target.value;setOwnerCourts(nc);}}>
+                              {["1 hr","1.5 hr","2 hr","3 hr"].map(d=><option key={d}>{d}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                        <div className="time-pair">
+                          <div className="fg">
+                            <label className="flbl">Base Price (Rs/slot)</label>
+                            <input className="finput" type="number" placeholder="e.g. 2500"
+                              value={court.priceBase}
+                              onChange={e=>{const nc=[...ownerCourts];nc[ci].priceBase=e.target.value;setOwnerCourts(nc);}}/>
+                          </div>
+                          <div className="fg">
+                            <label className="flbl">Peak Price (Rs/slot)</label>
+                            <input className="finput" type="number" placeholder="e.g. 3500"
+                              value={court.pricePeak}
+                              onChange={e=>{const nc=[...ownerCourts];nc[ci].pricePeak=e.target.value;setOwnerCourts(nc);}}/>
+                          </div>
+                        </div>
+                        <div className="fg">
+                          <label className="flbl">Ground-Specific Amenities (optional)</label>
+                          <input className="finput" placeholder="e.g. Floodlit, Turf, Net provided, Scoreboard..."/>
+                        </div>
+                        <div className="fg">
+                          <label className="flbl">Additional Notes (optional)</label>
+                          <textarea className="finput fta" placeholder="Any specific info about this ground — dimensions, condition, special equipment..."
+                            value={court.notes}
+                            onChange={e=>{const nc=[...ownerCourts];nc[ci].notes=e.target.value;setOwnerCourts(nc);}}/>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Add court button */}
+                  <button className="add-court-btn"
+                    onClick={()=>setOwnerCourts(p=>[...p,{id:Date.now(),name:`Ground ${p.length+1}`,sports:[],type:"",capacity:"",priceBase:"",pricePeak:"",slotDur:"2 hr",notes:""}])}>
+                    <Plus size={16} strokeWidth={2.5}/> Add Another Ground to This Facility
+                  </button>
+
+                  <div style={{background:"var(--green-l)",border:"1px solid var(--green)",borderRadius:12,padding:"12px 14px",marginBottom:13,fontSize:11,color:"var(--green-d)",fontWeight:600,lineHeight:1.5}}>
+                    ✓ {ownerCourts.length} ground{ownerCourts.length!==1?"s":""} ready to list under your facility. Each will appear as a separate bookable listing on Outfield.
+                  </div>
+
+                  <button className="book-btn"
+                    onClick={()=>{showToast("Submitted! Live within 24 hours.");setScreen("home");setNav("home");}}>
+                    Submit Facility for Review
+                  </button>
+                  <div style={{textAlign:"center",fontSize:11,color:"var(--ink4)",marginTop:10,marginBottom:20,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+                    <Shield size={12} color="var(--ink4)" strokeWidth={2}/> Free to list · Reviewed within 24 hours
+                  </div>
+                </>)}
+              </>)}
+
+              {/* ── BLOCK SLOTS TAB ── */}
+              {ownerSection === "manage" && (<>
+                <div className="info-note" style={{marginBottom:16}}>
+                  <AlertCircle size={13} color="#92400E" strokeWidth={2} style={{flexShrink:0,marginTop:1}}/>
+                  <span>Block specific slots to make them <strong>unavailable</strong> — for maintenance, personal use, or any reason. Blocked slots cannot be booked by players but are <strong>not</strong> marked as booked.</span>
+                </div>
+
+                <div style={{fontSize:11,fontWeight:800,color:"var(--ink3)",textTransform:"uppercase",letterSpacing:"1px",marginBottom:10}}>Currently Blocked</div>
+
+                {blockedSlots.length===0 && (
+                  <div className="empty" style={{padding:"28px 24px"}}>
+                    <div className="empty-ico-wrap"><X size={20} color="var(--ink4)" strokeWidth={1.5}/></div>
+                    <div className="empty-t">No blocked slots</div>
+                    <div className="empty-s">Add a block below to hide a slot from players</div>
+                  </div>
+                )}
+
+                {blockedSlots.map((b,i)=>(
+                  <div key={i} className="block-slot-row">
+                    <div>
+                      <div className="block-slot-time">{b.date} · {b.from} – {b.to}</div>
+                      <div className="block-slot-reason">{b.reason || "No reason specified"}</div>
+                    </div>
+                    <div className="block-slot-badge">Blocked</div>
+                    <button style={{marginLeft:6,width:28,height:28,borderRadius:8,background:"#FEF2F2",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}
+                      onClick={()=>setBlockedSlots(p=>p.filter((_,j)=>j!==i))}>
+                      <X size={12} color="#DC2626" strokeWidth={2.5}/>
+                    </button>
+                  </div>
+                ))}
+
+                <div style={{fontSize:11,fontWeight:800,color:"var(--ink3)",textTransform:"uppercase",letterSpacing:"1px",margin:"16px 0 10px"}}>Block a New Slot</div>
+
+                <div className="form-block" style={{marginBottom:10}}>
+                  <div className="fg"><label className="flbl">Date</label>
+                    <input className="finput" type="date"/>
+                  </div>
+                  <div className="time-pair">
+                    <div className="fg"><label className="flbl">From</label><input className="finput" type="time" defaultValue="12:00"/></div>
+                    <div className="fg"><label className="flbl">To</label><input className="finput" type="time" defaultValue="14:00"/></div>
+                  </div>
+                  <div className="fg"><label className="flbl">Reason (optional)</label>
+                    <input className="finput" placeholder="e.g. Maintenance, Private event..."/>
+                  </div>
+                  <button className="block-add-btn" style={{width:"100%",justifyContent:"center",marginTop:4,borderRadius:12,padding:"12px"}}
+                    onClick={()=>{
+                      setBlockedSlots(p=>[...p,{date:"Mar 12",from:"12:00",to:"14:00",reason:"Maintenance"}]);
+                      showToast("Slot blocked successfully");
+                    }}>
+                    <X size={13} strokeWidth={2.5}/> Block This Slot
+                  </button>
+                </div>
+
+                <div className="info-note">
+                  <Shield size={13} color="#92400E" strokeWidth={2} style={{flexShrink:0,marginTop:1}}/>
+                  <span>Blocked slots are hidden from players instantly. They will see "Unavailable" if they try to access that time. Only you can unblock them.</span>
+                </div>
+              </>)}
+            </div>
+          </div>
+        )}
+
+        {/* ═══ PROFILE ═══ */}
+        {screen === "profile" && (
+          <div className="screen active profile fade">
+            <div className="prof-head">
+              <div className="prof-glow"/>
+              <div className="prof-av-wrap">
+                <div className="prof-av">
+                  <User size={30} color="#fff" strokeWidth={1.5}/>
+                </div>
+                <div className="prof-av-badge">
+                  <Check size={11} color="#fff" strokeWidth={3}/>
+                </div>
+              </div>
+              <div className="prof-name">Maaz</div>
+              <div className="prof-sub">Karachi · Player since 2025</div>
+            </div>
+            <div style={{height:14}}/>
+            <div className="prof-body">
+              <div className="stat-row">
+                {[["3","Bookings"],["2","Sports"],["1","Matches"]].map(([n,l])=>(
+                  <div key={l} className="stat-card">
+                    <div className="stat-n">{n}</div>
+                    <div className="stat-l">{l}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="prof-list">
+                {[
+                  {I:Calendar, bg:"#DBEAFE", c:"#2563EB", t:"My Bookings",         s:"Upcoming & past"},
+                  {I:UserPlus, bg:"#FEF3C7", c:"#D97706", t:"Matchmaking History", s:"Games joined or hosted"},
+                  {I:Heart,    bg:"#FCE7F3", c:"#DB2777", t:"Favourite Grounds",   s:"Your saved venues"},
+                  {I:Bell,     bg:"#DCFCE7", c:"#16A34A", t:"Notifications",       s:"Booking alerts & requests"},
+                  {I:SlidersHorizontal, bg:"#F3F4F6", c:"#4B5563", t:"Settings",   s:"Account & preferences"},
+                ].map((r,i)=>(
+                  <div key={i} className="prof-row">
+                    <div className="prof-row-ico" style={{background:r.bg}}>
+                      <r.I size={17} color={r.c} strokeWidth={2}/>
+                    </div>
+                    <div>
+                      <div className="prof-row-t">{r.t}</div>
+                      <div className="prof-row-s">{r.s}</div>
+                    </div>
+                    <div className="prof-row-arr"><ChevronRight size={16} strokeWidth={2}/></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ═══ NAV BAR ═══ */}
+        {!["splash","onboard","success"].includes(screen) && (
+          <div className="navbar">
+            {[
+              {id:"home",    Icon:Home,    label:"Home"},
+              {id:"explore", Icon:Compass, label:"Explore"},
+              {id:"match",   Icon:UserPlus,label:"Matchmaking"},
+              {id:"profile", Icon:User,    label:"Profile"},
+            ].map(n=>{
+              const on = nav===n.id;
+              return (
+                <div key={n.id} className={`nav-item ${on?"on":""}`} onClick={()=>goNav(n.id)}>
+                  <div className="nav-ico-wrap">
+                    <n.Icon size={20} color={on?"var(--green-d)":"var(--ink4)"} strokeWidth={on?2.5:2}/>
+                  </div>
+                  <div className="nav-lbl">{n.label}</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
