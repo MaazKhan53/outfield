@@ -1,4 +1,3 @@
-import { supabase } from './supabase'
 import { useState, useEffect, useRef } from "react";
 import {
   MapPin, Search, Bell, Star, Clock, ChevronRight, Heart,
@@ -13,19 +12,225 @@ import {
 
 /* ─── DATA ─── */
 const SPORTS = [
-  { id:"all",        label:"All",         bg:"#0F172A", fg:"#fff",     Icon: Activity },
-  { id:"cricket",    label:"Cricket",     bg:"#14532D", fg:"#4ADE80",  Icon: Target   },
-  { id:"football",   label:"Football",    bg:"#7F1D1D", fg:"#FCA5A5",  Icon: Activity },
-  { id:"paddle",     label:"Paddle",      bg:"#78350F", fg:"#FCD34D",  Icon: Swords   },
-  { id:"basketball", label:"Basketball",  bg:"#7C2D12", fg:"#FDBA74",  Icon: Trophy   },
-  { id:"badminton",  label:"Badminton",   bg:"#4C1D95", fg:"#C4B5FD",  Icon: Zap      },
-  { id:"tennis",     label:"Tennis",      bg:"#164E63", fg:"#67E8F9",  Icon: Award    },
-  { id:"volleyball", label:"Volleyball",  bg:"#1E3A8A", fg:"#93C5FD",  Icon: Radio    },
-  { id:"squash",     label:"Squash",      bg:"#3B0764", fg:"#E879F9",  Icon: Target   },
-  { id:"hockey",     label:"Hockey",      bg:"#064E3B", fg:"#6EE7B7",  Icon: Activity },
-  { id:"tabletennis",label:"Table Tennis",bg:"#7F1D1D", fg:"#FCA5A5",  Icon: Zap      },
-  { id:"swimming",   label:"Swimming",    bg:"#0C4A6E", fg:"#7DD3FC",  Icon: RefreshCw},
+  { id:"all",        label:"All",         bg:"#0F172A", fg:"#E2E8F0",  neon:"#E2E8F0" },
+  { id:"cricket",    label:"Cricket",     bg:"#14532D", fg:"#4ADE80",  neon:"#4ADE80" },
+  { id:"football",   label:"Football",    bg:"#7F1D1D", fg:"#FCA5A5",  neon:"#FF6B6B" },
+  { id:"paddle",     label:"Paddle",      bg:"#78350F", fg:"#FCD34D",  neon:"#FFD700" },
+  { id:"basketball", label:"Basketball",  bg:"#7C2D12", fg:"#FDBA74",  neon:"#FF8C42" },
+  { id:"badminton",  label:"Badminton",   bg:"#4C1D95", fg:"#C4B5FD",  neon:"#BF5FFF" },
+  { id:"tennis",     label:"Tennis",      bg:"#164E63", fg:"#67E8F9",  neon:"#00E5FF" },
+  { id:"volleyball", label:"Volleyball",  bg:"#1E3A8A", fg:"#93C5FD",  neon:"#4D9FFF" },
+  { id:"squash",     label:"Squash",      bg:"#3B0764", fg:"#E879F9",  neon:"#FF00FF" },
+  { id:"hockey",     label:"Hockey",      bg:"#064E3B", fg:"#6EE7B7",  neon:"#00FFB3" },
+  { id:"tabletennis",label:"Table Tennis",bg:"#7F1D1D", fg:"#FCA5A5",  neon:"#FF6B9D" },
+  { id:"swimming",   label:"Swimming",    bg:"#0C4A6E", fg:"#7DD3FC",  neon:"#00CFFF" },
 ];
+
+/* ─── NEON SPORT ICONS ─── */
+const NeonSportIcon = ({ id, color="#fff", size=18 }) => {
+  const s = size;
+  const h = s;
+  const gid = `ng-${id}-${Math.random().toString(36).slice(2,6)}`;
+  const glow = (
+    <defs>
+      <filter id={gid} x="-60%" y="-60%" width="220%" height="220%">
+        <feGaussianBlur stdDeviation="1.2" result="b1"/>
+        <feGaussianBlur stdDeviation="3"   result="b2"/>
+        <feMerge><feMergeNode in="b2"/><feMergeNode in="b1"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+  );
+  const base = { fill:"none", stroke:color, strokeLinecap:"round", strokeLinejoin:"round", filter:`url(#${gid})` };
+
+  const icons = {
+    all: (
+      /* Stadium arch */
+      <svg width={s} height={h} viewBox="0 0 20 20">
+        {glow}
+        <path d="M2 16 Q2 4 10 4 Q18 4 18 16" strokeWidth="1.6" {...base}/>
+        <line x1="2" y1="16" x2="18" y2="16" strokeWidth="1.6" {...base}/>
+        <line x1="6" y1="16" x2="6" y2="10" strokeWidth="1.2" {...base}/>
+        <line x1="14" y1="16" x2="14" y2="10" strokeWidth="1.2" {...base}/>
+        <line x1="6" y1="10" x2="14" y2="10" strokeWidth="1.2" {...base}/>
+      </svg>
+    ),
+    cricket: (
+      /* Cricket bat angled + ball */
+      <svg width={s} height={h} viewBox="0 0 20 20">
+        {glow}
+        {/* Bat blade */}
+        <rect x="3" y="9" width="6" height="10" rx="1.5" transform="rotate(-35 6 14)" strokeWidth="1.5" {...base}/>
+        {/* Bat handle */}
+        <line x1="10" y1="5" x2="13.5" y2="1.5" strokeWidth="1.3" {...base}/>
+        {/* Ball */}
+        <circle cx="15.5" cy="5.5" r="2.5" strokeWidth="1.4" {...base}/>
+        <path d="M14 4.2 Q15.5 5.5 17 4.2" strokeWidth="0.9" {...base}/>
+      </svg>
+    ),
+    football: (
+      /* Football with pentagon patches */
+      <svg width={s} height={h} viewBox="0 0 20 20">
+        {glow}
+        <circle cx="10" cy="10" r="7.5" strokeWidth="1.5" {...base}/>
+        {/* Pentagon center */}
+        <polygon points="10,5.5 12.5,7.5 11.5,10.5 8.5,10.5 7.5,7.5" strokeWidth="1" {...base}/>
+        {/* Seam lines */}
+        <line x1="10" y1="5.5" x2="10" y2="2.5" strokeWidth="0.9" {...base}/>
+        <line x1="12.5" y1="7.5" x2="15.5" y2="6" strokeWidth="0.9" {...base}/>
+        <line x1="11.5" y1="10.5" x2="13.5" y2="13" strokeWidth="0.9" {...base}/>
+        <line x1="8.5" y1="10.5" x2="6.5" y2="13" strokeWidth="0.9" {...base}/>
+        <line x1="7.5" y1="7.5" x2="4.5" y2="6" strokeWidth="0.9" {...base}/>
+      </svg>
+    ),
+    paddle: (
+      /* Paddle racket + ball */
+      <svg width={s} height={h} viewBox="0 0 20 20">
+        {glow}
+        {/* Racket head — rounded rectangle */}
+        <ellipse cx="8" cy="8" rx="5.5" ry="6" strokeWidth="1.5" {...base}/>
+        {/* Strings horizontal */}
+        <line x1="4" y1="6" x2="12" y2="6" strokeWidth="0.7" {...base}/>
+        <line x1="3.5" y1="8" x2="12.5" y2="8" strokeWidth="0.7" {...base}/>
+        <line x1="4" y1="10" x2="12" y2="10" strokeWidth="0.7" {...base}/>
+        {/* Strings vertical */}
+        <line x1="6" y1="2.5" x2="6" y2="13.5" strokeWidth="0.7" {...base}/>
+        <line x1="8" y1="2" x2="8" y2="14" strokeWidth="0.7" {...base}/>
+        <line x1="10" y1="2.5" x2="10" y2="13.5" strokeWidth="0.7" {...base}/>
+        {/* Handle */}
+        <line x1="8" y1="14" x2="14" y2="19" strokeWidth="1.8" {...base}/>
+        {/* Ball */}
+        <circle cx="16" cy="5" r="2" strokeWidth="1.3" {...base}/>
+      </svg>
+    ),
+    basketball: (
+      /* Basketball with seams */
+      <svg width={s} height={h} viewBox="0 0 20 20">
+        {glow}
+        <circle cx="10" cy="10" r="7.5" strokeWidth="1.5" {...base}/>
+        {/* Vertical seam */}
+        <path d="M10 2.5 Q13 6 13 10 Q13 14 10 17.5" strokeWidth="1.1" {...base}/>
+        {/* Left seam */}
+        <path d="M10 2.5 Q7 6 7 10 Q7 14 10 17.5" strokeWidth="1.1" {...base}/>
+        {/* Horizontal seam */}
+        <line x1="2.5" y1="10" x2="17.5" y2="10" strokeWidth="1.1" {...base}/>
+      </svg>
+    ),
+    badminton: (
+      /* Shuttlecock */
+      <svg width={s} height={h} viewBox="0 0 20 20">
+        {glow}
+        {/* Cork base */}
+        <ellipse cx="10" cy="15.5" rx="2.5" ry="2" strokeWidth="1.4" {...base}/>
+        {/* Feathers fanning out */}
+        <line x1="10" y1="13.5" x2="5"  y2="3"  strokeWidth="1.1" {...base}/>
+        <line x1="10" y1="13.5" x2="7"  y2="2.5"strokeWidth="1.1" {...base}/>
+        <line x1="10" y1="13.5" x2="10" y2="2"  strokeWidth="1.1" {...base}/>
+        <line x1="10" y1="13.5" x2="13" y2="2.5"strokeWidth="1.1" {...base}/>
+        <line x1="10" y1="13.5" x2="15" y2="3"  strokeWidth="1.1" {...base}/>
+        {/* Feather rim */}
+        <path d="M5 3 Q7.5 4.5 10 4 Q12.5 4.5 15 3" strokeWidth="1" {...base}/>
+      </svg>
+    ),
+    tennis: (
+      /* Tennis racket with strings */
+      <svg width={s} height={h} viewBox="0 0 20 20">
+        {glow}
+        {/* Racket head oval */}
+        <ellipse cx="9" cy="8" rx="6" ry="6.5" strokeWidth="1.5" {...base}/>
+        {/* Strings */}
+        <line x1="6" y1="3" x2="6" y2="13"  strokeWidth="0.7" {...base}/>
+        <line x1="9" y1="1.5" x2="9" y2="14.5" strokeWidth="0.7" {...base}/>
+        <line x1="12" y1="3" x2="12" y2="13" strokeWidth="0.7" {...base}/>
+        <line x1="4" y1="6"  x2="14" y2="6"  strokeWidth="0.7" {...base}/>
+        <line x1="3.5" y1="8.5" x2="14.5" y2="8.5" strokeWidth="0.7" {...base}/>
+        <line x1="4" y1="11" x2="14" y2="11" strokeWidth="0.7" {...base}/>
+        {/* Handle */}
+        <line x1="9" y1="14.5" x2="15" y2="19" strokeWidth="1.8" {...base}/>
+      </svg>
+    ),
+    volleyball: (
+      /* Volleyball with curved stripes */
+      <svg width={s} height={h} viewBox="0 0 20 20">
+        {glow}
+        <circle cx="10" cy="10" r="7.5" strokeWidth="1.5" {...base}/>
+        {/* Curved stripes */}
+        <path d="M4 6.5 Q10 4 16 6.5"  strokeWidth="1.1" {...base}/>
+        <path d="M2.8 12 Q7 16 10 17.5" strokeWidth="1.1" {...base}/>
+        <path d="M17.2 12 Q13 16 10 17.5" strokeWidth="1.1" {...base}/>
+        <path d="M4 6.5 Q5 12 2.8 12"   strokeWidth="1.1" {...base}/>
+        <path d="M16 6.5 Q15 12 17.2 12" strokeWidth="1.1" {...base}/>
+      </svg>
+    ),
+    squash: (
+      /* Squash racket — teardrop head */
+      <svg width={s} height={h} viewBox="0 0 20 20">
+        {glow}
+        {/* Teardrop head */}
+        <path d="M10 2 Q16 4 16 10 Q16 15 10 15 Q4 15 4 10 Q4 4 10 2Z" strokeWidth="1.5" {...base}/>
+        {/* Strings */}
+        <line x1="7"  y1="4.5" x2="7"  y2="13.5" strokeWidth="0.7" {...base}/>
+        <line x1="10" y1="3"   x2="10" y2="15"   strokeWidth="0.7" {...base}/>
+        <line x1="13" y1="4.5" x2="13" y2="13.5" strokeWidth="0.7" {...base}/>
+        <line x1="4.5" y1="8"  x2="15.5" y2="8"  strokeWidth="0.7" {...base}/>
+        <line x1="4"   y1="11" x2="16"   y2="11" strokeWidth="0.7" {...base}/>
+        {/* Handle */}
+        <line x1="10" y1="15" x2="10" y2="19" strokeWidth="1.8" {...base}/>
+      </svg>
+    ),
+    hockey: (
+      /* Hockey stick + puck */
+      <svg width={s} height={h} viewBox="0 0 20 20">
+        {glow}
+        {/* Stick shaft */}
+        <line x1="4" y1="2" x2="10" y2="13" strokeWidth="1.6" {...base}/>
+        {/* Curved blade */}
+        <path d="M10 13 Q13 15 16 14 Q17 13.5 16.5 12 Q16 11 13 12 Q11 12.5 10 13" strokeWidth="1.4" {...base}/>
+        {/* Puck */}
+        <ellipse cx="14" cy="17" rx="3.5" ry="1.5" strokeWidth="1.3" {...base}/>
+      </svg>
+    ),
+    tabletennis: (
+      /* Ping pong paddle — round with handle */
+      <svg width={s} height={h} viewBox="0 0 20 20">
+        {glow}
+        {/* Paddle head — circle */}
+        <circle cx="9" cy="8" r="6" strokeWidth="1.5" {...base}/>
+        {/* Center line */}
+        <line x1="3" y1="8" x2="15" y2="8" strokeWidth="0.9" {...base}/>
+        {/* Handle */}
+        <path d="M12 13 L15.5 17.5" strokeWidth="2" {...base}/>
+        {/* Ball */}
+        <circle cx="17" cy="3.5" r="1.8" strokeWidth="1.3" {...base}/>
+      </svg>
+    ),
+    swimming: (
+      /* Wave lines */
+      <svg width={s} height={h} viewBox="0 0 20 20">
+        {glow}
+        {/* Three waves */}
+        <path d="M1.5 6 Q4 3.5 6.5 6 Q9 8.5 11.5 6 Q14 3.5 16.5 6 Q19 8.5 19 8" strokeWidth="1.5" {...base}/>
+        <path d="M1.5 10.5 Q4 8 6.5 10.5 Q9 13 11.5 10.5 Q14 8 16.5 10.5 Q19 13 19 12.5" strokeWidth="1.5" {...base}/>
+        <path d="M1.5 15 Q4 12.5 6.5 15 Q9 17.5 11.5 15 Q14 12.5 16.5 15 Q19 17.5 19 17" strokeWidth="1.5" {...base}/>
+        {/* Swimmer arm silhouette */}
+        <path d="M8 4 Q11 2 14 4" strokeWidth="1.2" {...base}/>
+      </svg>
+    ),
+  };
+
+  return icons[id] || icons["all"];
+};
+
+/* Generate 14 days from today */
+const generateDates = () => {
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const today = new Date();
+  return Array.from({length:14}, (_,i) => {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    return `${months[d.getMonth()]} ${d.getDate()}`;
+  });
+};
+const DATES = generateDates();
 
 const AMENITY_ICONS = {
   "Floodlit":      Lightbulb,
@@ -162,8 +367,6 @@ const GROUNDS = [
   },
 ];
 
-const DATES = ["Mar 10","Mar 11","Mar 12","Mar 13","Mar 14"];
-
 const TEAM_CHALLENGES = [
   {
     id:"tc1", groundName:"DHA Sports Complex", area:"DHA Phase 6", date:"Mar 10",
@@ -221,64 +424,150 @@ const css = `
   --s3:0 10px 36px rgba(0,0,0,.13),0 3px 10px rgba(0,0,0,.07);
   --r:20px;--r2:14px;--r3:10px;--r4:8px;
 }
-html,body{height:100%;font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}
-.app{max-width:420px;margin:0 auto;background:var(--bg);min-height:100vh;position:relative;overflow:hidden;box-shadow:0 0 80px rgba(0,0,0,.2);}
-.screen{display:none;flex-direction:column;min-height:100vh;}
+html,body{
+  height:100%;
+  font-family:'Inter',sans-serif;
+  -webkit-font-smoothing:antialiased;
+  overflow:hidden;
+  position:fixed;
+  width:100%;
+}
+.app{
+  max-width:420px;
+  margin:0 auto;
+  background:var(--bg);
+  height:100vh;
+  height:100dvh;
+  position:relative;
+  overflow:hidden;
+  box-shadow:0 0 80px rgba(0,0,0,.2);
+  display:flex;
+  flex-direction:column;
+}
+.screen{
+  display:none;
+  flex-direction:column;
+  height:100vh;
+  height:100dvh;
+  position:absolute;
+  top:0;left:0;right:0;bottom:0;
+  overflow-y:auto;
+  overflow-x:hidden;
+  -webkit-overflow-scrolling:touch;
+}
 .screen.active{display:flex;}
+
+/* ── TRANSITIONS ── */
+.slide-in-right{animation:slideInRight .28s cubic-bezier(.25,.46,.45,.94) forwards;}
+.slide-in-left{animation:slideInLeft .28s cubic-bezier(.25,.46,.45,.94) forwards;}
+.slide-out-right{animation:slideOutRight .28s cubic-bezier(.25,.46,.45,.94) forwards;}
+.slide-out-left{animation:slideOutLeft .28s cubic-bezier(.25,.46,.45,.94) forwards;}
+.scale-in{animation:scaleIn .3s cubic-bezier(.34,1.56,.64,1) forwards;}
+@keyframes slideInRight{from{transform:translateX(100%);opacity:.8;}to{transform:translateX(0);opacity:1;}}
+@keyframes slideInLeft{from{transform:translateX(-100%);opacity:.8;}to{transform:translateX(0);opacity:1;}}
+@keyframes slideOutRight{from{transform:translateX(0);opacity:1;}to{transform:translateX(100%);opacity:.8;}}
+@keyframes slideOutLeft{from{transform:translateX(0);opacity:1;}to{transform:translateX(-100%);opacity:.8;}}
+@keyframes scaleIn{from{transform:scale(.94) translateY(8px);opacity:0;}to{transform:scale(1) translateY(0);opacity:1;}}
 
 /* ── SPLASH ── */
 .splash{
-  background:#060B12;
+  background:#040608;
   align-items:center;justify-content:center;
   position:relative;overflow:hidden;
+  flex-direction:column;
 }
-.splash-bg-grad{position:absolute;inset:0;background:radial-gradient(ellipse 80% 60% at 50% 20%, rgba(22,163,74,.18) 0%, transparent 65%), radial-gradient(ellipse 50% 40% at 80% 80%, rgba(34,197,94,.08) 0%, transparent 60%);}
-.splash-sport-img{
+/* Dark vignette bg */
+.splash-bg-grad{
+  position:absolute;inset:0;
+  background:
+    radial-gradient(ellipse 70% 50% at 50% 40%, rgba(0,255,120,.07) 0%, transparent 70%),
+    radial-gradient(ellipse 100% 100% at 50% 100%, rgba(0,200,80,.04) 0%, transparent 60%);
+}
+/* ── NEON CRICKET WICKET SVG ── */
+.splash-neon-wrap{
+  position:relative;
+  z-index:2;
+  width:180px;
+  height:180px;
+  margin-bottom:28px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+/* Neon glow orb behind wicket */
+.splash-neon-orb{
   position:absolute;
-  right:-30px;
-  bottom:60px;
-  width:300px;
-  height:300px;
-  object-fit:cover;
+  width:140px;height:140px;
   border-radius:50%;
-  opacity:.22;
-  filter:blur(1px) saturate(1.4);
-  animation:imgfloat 4s ease-in-out infinite;
+  background:radial-gradient(circle,rgba(34,255,120,.18) 0%,rgba(34,255,120,.04) 50%,transparent 70%);
+  animation:orbpulse 2s ease-in-out infinite;
 }
-.splash-racket-wrap{
-  position:absolute;
-  right:-20px;
-  top:50%;
-  transform:translateY(-50%) rotate(-18deg);
-  width:220px;
-  height:220px;
-  z-index:1;
-  animation:racketfloat 5s ease-in-out infinite;
+@keyframes orbpulse{0%,100%{transform:scale(1);opacity:.8;}50%{transform:scale(1.15);opacity:1;}}
+/* The SVG itself is inline in JSX */
+/* Neon flicker animation for strokes */
+@keyframes neonFlicker{
+  0%,19%,21%,23%,25%,54%,56%,100%{
+    filter:drop-shadow(0 0 4px #00ff78) drop-shadow(0 0 12px #00ff78) drop-shadow(0 0 24px #00cc55);
+    opacity:1;
+  }
+  20%,24%,55%{
+    filter:none;
+    opacity:.7;
+  }
 }
-.splash-racket-img{
-  width:100%;
-  height:100%;
-  object-fit:contain;
-  opacity:.55;
-  filter:drop-shadow(0 20px 60px rgba(34,197,94,.3));
+@keyframes neonOn{
+  0%{stroke-dashoffset:400;opacity:0;}
+  30%{opacity:.3;}
+  60%{stroke-dashoffset:0;opacity:1;}
+  100%{stroke-dashoffset:0;opacity:1;}
 }
-@keyframes racketfloat{0%,100%{transform:translateY(-50%) rotate(-18deg);}50%{transform:translateY(-53%) rotate(-15deg);}}
-@keyframes imgfloat{0%,100%{transform:scale(1);}50%{transform:scale(1.04);}}
-.splash-glow{position:absolute;right:40px;top:45%;width:180px;height:180px;background:radial-gradient(circle,rgba(34,197,94,.15) 0%,transparent 70%);border-radius:50%;pointer-events:none;}
-.splash-inner{position:relative;z-index:2;text-align:left;padding:0 30px;}
-.splash-eyebrow{font-size:10px;color:rgba(255,255,255,.35);font-weight:600;letter-spacing:3px;text-transform:uppercase;margin-bottom:14px;}
-.splash-pill{display:inline-flex;align-items:center;gap:6px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.22);color:var(--green-v);font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;padding:5px 13px;border-radius:100px;margin-bottom:18px;}
-.splash-pill-dot{width:5px;height:5px;border-radius:50%;background:var(--green-v);animation:blink 1.4s ease infinite;}
+@keyframes batSwing{
+  0%{transform:rotate(-35deg) translateX(-10px);}
+  40%{transform:rotate(20deg) translateX(5px);}
+  60%{transform:rotate(15deg) translateX(4px);}
+  100%{transform:rotate(20deg) translateX(5px);}
+}
+@keyframes ballLaunch{
+  0%{transform:translate(0,0);opacity:0;}
+  10%{opacity:1;}
+  100%{transform:translate(60px,-80px);opacity:0;}
+}
+@keyframes sparkle{
+  0%{transform:scale(0) rotate(0deg);opacity:1;}
+  100%{transform:scale(1.5) rotate(180deg);opacity:0;}
+}
+.neon-wicket{
+  animation:neonFlicker 4s ease-in-out infinite;
+  stroke-dasharray:400;
+  animation:neonOn 1.2s ease forwards, neonFlicker 4s 1.2s ease-in-out infinite;
+}
+.neon-bat{
+  transform-origin:80px 130px;
+  animation:batSwing 1s .4s cubic-bezier(.34,1.56,.64,1) forwards;
+}
+.neon-ball{
+  animation:ballLaunch .8s .9s ease-out forwards;
+  opacity:0;
+}
+.neon-spark{
+  animation:sparkle .6s 1s ease-out forwards;
+  opacity:0;
+}
+/* ── Rest of splash ── */
+.splash-inner{position:relative;z-index:2;text-align:center;padding:0 30px;}
+.splash-pill{display:inline-flex;align-items:center;gap:6px;background:rgba(0,255,120,.08);border:1px solid rgba(0,255,120,.25);color:#00ff78;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;padding:5px 13px;border-radius:100px;margin-bottom:14px;text-shadow:0 0 8px rgba(0,255,120,.6);}
+.splash-pill-dot{width:5px;height:5px;border-radius:50%;background:#00ff78;animation:blink 1.4s ease infinite;box-shadow:0 0 8px #00ff78;}
 @keyframes blink{0%,100%{opacity:1;}50%{opacity:.2;}}
-.splash-logo{font-family:'Sora',sans-serif;font-size:66px;font-weight:900;color:#fff;letter-spacing:-4px;line-height:1;}
-.splash-logo em{color:var(--green-v);font-style:normal;}
-.splash-tagline{font-size:12px;color:rgba(255,255,255,.28);margin-top:10px;letter-spacing:.4px;font-weight:400;}
-.splash-sport-pills{display:flex;gap:7px;margin-top:22px;flex-wrap:wrap;}
-.splash-sport-pill{font-size:10px;font-weight:600;color:rgba(255,255,255,.4);background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:100px;padding:4px 12px;}
-.splash-loader{display:flex;align-items:center;gap:8px;margin-top:48px;padding:0 30px;position:relative;z-index:2;}
-.splash-bar-fill{height:2px;border-radius:100px;background:var(--green-v);animation:barload 1.8s ease forwards;}
+.splash-logo{font-family:'Sora',sans-serif;font-size:58px;font-weight:900;color:#fff;letter-spacing:-3px;line-height:1;}
+.splash-logo em{
+  color:#00ff78;font-style:normal;
+  text-shadow:0 0 10px rgba(0,255,120,.8),0 0 30px rgba(0,255,120,.4);
+}
+.splash-tagline{font-size:11px;color:rgba(255,255,255,.3);margin-top:8px;letter-spacing:1px;font-weight:400;}
+.splash-loader{display:flex;align-items:center;gap:8px;margin-top:36px;padding:0 30px;position:relative;z-index:2;width:100%;}
+.splash-bar-fill{height:2px;border-radius:100px;background:linear-gradient(90deg,#00ff78,#00cc55);animation:barload 1.8s ease forwards;box-shadow:0 0 8px rgba(0,255,120,.6);}
 @keyframes barload{from{width:0;}to{width:100%;}}
-.splash-bar-wrap{flex:1;background:rgba(255,255,255,.07);border-radius:100px;overflow:hidden;height:2px;}
+.splash-bar-wrap{flex:1;background:rgba(255,255,255,.06);border-radius:100px;overflow:hidden;height:2px;}
 
 /* ── ONBOARD ── */
 .onboard{background:#060B12;position:relative;overflow:hidden;min-height:100vh;display:flex;flex-direction:column;}
@@ -295,7 +584,7 @@ html,body{height:100%;font-family:'Inter',sans-serif;-webkit-font-smoothing:anti
 .ob-pretag{font-size:10px;font-weight:700;color:var(--green-v);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;}
 .ob-h{font-family:'Sora',sans-serif;font-size:36px;font-weight:900;color:#fff;line-height:1.06;letter-spacing:-1px;}
 .ob-h em{color:var(--green-v);font-style:normal;}
-.ob-sub{font-size:13px;color:rgba(255,255,255,.42);line-height:1.65;margin-top:10px;font-weight:400;max-width:290px;}
+.ob-sub{font-size:13px;color:rgba(255,255,255,.42);line-height:1.65;margin-top:10px;font-weight:400;max-width:290px;text-align:left;}
 .ob-stats{display:flex;gap:6px;margin-top:18px;}
 .ob-stat{flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:11px 8px;text-align:center;}
 .ob-stat-n{font-family:'Sora',sans-serif;font-size:17px;font-weight:900;color:#fff;}
@@ -729,6 +1018,27 @@ html,body{height:100%;font-family:'Inter',sans-serif;-webkit-font-smoothing:anti
 /* ── LATE BOOKING ── */
 .late-badge{display:inline-flex;align-items:center;gap:5px;background:#FEF3C7;border:1px solid #FDE68A;color:#92400E;font-size:10px;font-weight:700;padding:4px 10px;border-radius:100px;}
 
+/* ── TIME FILTER ── */
+.filter-panel{background:#fff;border-radius:var(--r);box-shadow:var(--s3);border:1px solid var(--border);margin:0 18px 12px;padding:16px;animation:scaleIn .2s ease;}
+.filter-panel-title{font-size:11px;font-weight:800;color:var(--ink3);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;}
+.filter-clear{font-size:11px;font-weight:700;color:var(--green-d);cursor:pointer;}
+.time-filter-row{display:flex;gap:8px;align-items:center;margin-bottom:10px;}
+.time-filter-label{font-size:11px;font-weight:600;color:var(--ink3);width:28px;}
+.time-filter-select{flex:1;padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;font-family:'Inter',sans-serif;font-size:12px;color:var(--ink);outline:none;background:#fff;cursor:pointer;}
+.time-filter-select:focus{border-color:var(--green);}
+.filter-active-badge{display:inline-flex;align-items:center;gap:4px;background:var(--green-l);border:1px solid var(--green);color:var(--green-d);font-size:10px;font-weight:700;padding:3px 9px;border-radius:100px;}
+/* ── BOOKING LIMIT ── */
+.booking-limit-note{display:flex;align-items:center;gap:6px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:10px;padding:9px 13px;margin-bottom:10px;font-size:11px;color:#92400E;font-weight:600;}
+/* ── PLAYER COUNT PRICING ── */
+.player-count-row{display:flex;align-items:center;gap:10px;background:var(--bg);border-radius:12px;padding:12px 14px;margin-bottom:10px;}
+.player-count-label{font-size:12px;font-weight:700;color:var(--ink2);flex:1;}
+.player-count-ctrl{display:flex;align-items:center;gap:10px;}
+.pcc-btn{width:30px;height:30px;border-radius:50%;border:1.5px solid var(--border);background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;font-weight:700;color:var(--ink);}
+.pcc-val{font-size:15px;font-weight:800;color:var(--ink);min-width:20px;text-align:center;}
+.price-calc-row{display:flex;justify-content:space-between;align-items:center;background:var(--green-l);border:1px solid var(--green);border-radius:10px;padding:10px 14px;margin-bottom:10px;}
+.price-calc-label{font-size:12px;font-weight:600;color:var(--green-d);}
+.price-calc-total{font-size:16px;font-weight:900;color:var(--green-d);font-family:'Sora',sans-serif;}
+
 .fade{animation:fadeup .22s ease;}
 @keyframes fadeup{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
 `;
@@ -743,7 +1053,6 @@ export default function Outfield() {
   const [sport, setSport]     = useState("all");
   const [search, setSearch]   = useState("");
   const [ground, setGround]   = useState(null);
-  const [date, setDate]       = useState("Mar 10");
   const [slot, setSlot]       = useState(null);
   const [pay, setPay]         = useState("cash");
   const [joined, setJoined]   = useState({});
@@ -762,15 +1071,22 @@ export default function Outfield() {
     {id:1, name:"Ground 1", sports:[], type:"Outdoor", capacity:"", priceBase:"", pricePeak:"", slotDur:"2 hr", notes:""}
   ]);
   const [heroIdx, setHeroIdx] = useState(0);
-  const [court, setCourt]       = useState(null);   // selected court within a facility
+  const [court, setCourt]       = useState(null);
   const [ratingModal, setRatingModal] = useState(false);
   const [ratingVal, setRatingVal]     = useState(0);
   const [ratingHover, setRatingHover] = useState(0);
   const [ratingDone, setRatingDone]   = useState(false);
   const [matchTab, setMatchTab]   = useState("players");
   const [teamReqs, setTeamReqs]   = useState({});
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [timeFilterFrom, setTimeFilterFrom]   = useState("");
+  const [timeFilterTo, setTimeFilterTo]       = useState("");
+  const [playerCount, setPlayerCount]         = useState(1);
+  const [bookingCount, setBookingCount]       = useState(0);
+  const MAX_BOOKINGS = 2;
   const [bookRef]                 = useState("OTF-" + Math.random().toString(36).substring(2,6).toUpperCase());
   const fileRef               = useRef(null);
+  const [date, setDate]       = useState(DATES[0]);
 
   useEffect(() => { const t = setTimeout(() => setScreen("onboard"), 2200); return () => clearTimeout(t); }, []);
 
@@ -787,10 +1103,26 @@ export default function Outfield() {
     setScreen({home:"home",explore:"explore",match:"match",profile:"profile"}[n]);
   };
 
+  const navigate = (toScreen, transition="fade") => {
+    setScreen(toScreen);
+  };
+
   const filtered = GROUNDS.filter(g => {
     const ms = sport === "all" || g.sports.includes(sport);
     const mq = !search || g.name.toLowerCase().includes(search.toLowerCase()) || g.area.toLowerCase().includes(search.toLowerCase());
-    return ms && mq;
+    // Time filter — check if any slot in the ground falls within the selected time range
+    let mt = true;
+    if (timeFilterFrom && timeFilterTo) {
+      const allSlots = g.isFacility
+        ? (g.courts||[]).flatMap(c => c.slots?.["Mar 10"] || [])
+        : (g.slots?.["Mar 10"] || []);
+      mt = allSlots.some(s => {
+        if (s.booked) return false;
+        const slotFrom = s.time.split("–")[0];
+        return slotFrom >= timeFilterFrom && slotFrom < timeFilterTo;
+      });
+    }
+    return ms && mq && mt;
   });
 
   const curSlot  = ground && slot !== null ? getSlots(ground, date)[slot] : null;
@@ -874,30 +1206,84 @@ export default function Outfield() {
         {screen === "splash" && (
           <div className="screen active splash">
             <div className="splash-bg-grad"/>
-            <div className="splash-glow"/>
-            {/* Paddle racket floating image */}
-            <div className="splash-racket-wrap">
-              <img
-                className="splash-racket-img"
-                src="https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=600&q=80"
-                alt="paddle"
-              />
+
+            {/* ── NEON CRICKET ANIMATION ── */}
+            <div className="splash-neon-wrap">
+              <div className="splash-neon-orb"/>
+              <svg width="160" height="160" viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <filter id="neon">
+                    <feGaussianBlur stdDeviation="2.5" result="blur1"/>
+                    <feGaussianBlur stdDeviation="7" result="blur2"/>
+                    <feMerge><feMergeNode in="blur2"/><feMergeNode in="blur1"/><feMergeNode in="SourceGraphic"/></feMerge>
+                  </filter>
+                  <filter id="neonsoft">
+                    <feGaussianBlur stdDeviation="1.5" result="blur"/>
+                    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                  </filter>
+                  <filter id="neonred">
+                    <feGaussianBlur stdDeviation="3" result="blur"/>
+                    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                  </filter>
+                </defs>
+
+                {/* Ground oval */}
+                <ellipse cx="80" cy="142" rx="52" ry="7" stroke="#00ff78" strokeWidth="1" strokeOpacity=".2" fill="none" filter="url(#neonsoft)"/>
+
+                {/* LEFT STUMP */}
+                <line x1="60" y1="58" x2="60" y2="132" stroke="#00ff78" strokeWidth="3" strokeLinecap="round" filter="url(#neon)"
+                  style={{strokeDasharray:"80",strokeDashoffset:"80",animation:"neonOn 0.9s 0s ease forwards, neonFlicker 3s 1.1s infinite"}}/>
+                {/* CENTER STUMP */}
+                <line x1="80" y1="53" x2="80" y2="132" stroke="#00ff78" strokeWidth="3" strokeLinecap="round" filter="url(#neon)"
+                  style={{strokeDasharray:"80",strokeDashoffset:"80",animation:"neonOn 0.9s 0.15s ease forwards, neonFlicker 3s 1.25s infinite"}}/>
+                {/* RIGHT STUMP */}
+                <line x1="100" y1="58" x2="100" y2="132" stroke="#00ff78" strokeWidth="3" strokeLinecap="round" filter="url(#neon)"
+                  style={{strokeDasharray:"80",strokeDashoffset:"80",animation:"neonOn 0.9s 0.3s ease forwards, neonFlicker 3s 1.4s infinite"}}/>
+
+                {/* BAIL LEFT */}
+                <line x1="57" y1="58" x2="72" y2="55" stroke="#00ff78" strokeWidth="2.5" strokeLinecap="round" filter="url(#neon)"
+                  style={{animation:"neonFlicker 3s 1.5s infinite"}}/>
+                {/* BAIL RIGHT */}
+                <line x1="88" y1="55" x2="103" y2="58" stroke="#00ff78" strokeWidth="2.5" strokeLinecap="round" filter="url(#neon)"
+                  style={{animation:"neonFlicker 3s 1.6s infinite"}}/>
+
+                {/* BAT */}
+                <g style={{transformOrigin:"28px 118px", animation:"batSwing 0.9s 0.5s cubic-bezier(.34,1.56,.64,1) forwards"}}>
+                  <rect x="18" y="88" width="17" height="38" rx="4" fill="none" stroke="#7DF9FF" strokeWidth="2.5" filter="url(#neonsoft)"
+                    style={{animation:"neonFlicker 3.5s 1.8s infinite"}}/>
+                  <line x1="26.5" y1="88" x2="26.5" y2="72" stroke="#7DF9FF" strokeWidth="2" strokeLinecap="round" filter="url(#neonsoft)"
+                    style={{animation:"neonFlicker 3.5s 1.9s infinite"}}/>
+                </g>
+
+                {/* BALL */}
+                <g style={{animation:"ballLaunch 0.9s 0.85s ease-out forwards", opacity:0}}>
+                  <circle cx="42" cy="100" r="8" fill="none" stroke="#FF6B6B" strokeWidth="2.5" filter="url(#neonred)"/>
+                  <path d="M38 97 Q42 101 46 97" stroke="#FF6B6B" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+                  <path d="M38 103 Q42 99 46 103" stroke="#FF6B6B" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+                </g>
+
+                {/* SPARKS on impact */}
+                {[0,45,90,135,180,225,270,315].map((deg,i)=>(
+                  <line key={i}
+                    x1="50" y1="98"
+                    x2={50+14*Math.cos(deg*Math.PI/180)}
+                    y2={98+14*Math.sin(deg*Math.PI/180)}
+                    stroke={i%2===0?"#FFD700":"#FF6B6B"} strokeWidth="1.5" strokeLinecap="round"
+                    style={{animation:`sparkle 0.5s ${1.0+i*0.04}s ease-out forwards`, opacity:0}}/>
+                ))}
+              </svg>
             </div>
+
             <div className="splash-inner">
               <div className="splash-pill">
                 <div className="splash-pill-dot"/>
-                Live in Karachi
+                Book. Show up. Play.
               </div>
               <div className="splash-logo">Out<em>field</em></div>
-              <div className="splash-tagline">Book. Show up. Play.</div>
-              <div className="splash-sport-pills">
-                {["Cricket","Football","Paddle","Basketball"].map(s=>(
-                  <div key={s} className="splash-sport-pill">{s}</div>
-                ))}
-              </div>
+              <div className="splash-tagline">Find your field. Own your game.</div>
             </div>
-            <div className="splash-loader">
-              <div className="splash-bar-wrap"><div className="splash-bar-fill"/></div>
+            <div className="splash-loader" style={{width:"55%",marginTop:28}}>
+              <div className="splash-bar-wrap" style={{flex:1}}><div className="splash-bar-fill"/></div>
             </div>
           </div>
         )}
@@ -936,7 +1322,7 @@ export default function Outfield() {
                 <div className="ob-sports-scroll">
                   {SPORTS.filter(s=>s.id!=="all").map(s=>(
                     <div key={s.id} className="ob-sport-tag" style={{borderColor:`${s.bg}50`,background:`${s.bg}20`,color:s.fg}}>
-                      <s.Icon size={10} strokeWidth={2}/>{s.label}
+                      <NeonSportIcon id={s.id} color={s.neon} size={14}/>{s.label}
                     </div>
                   ))}
                 </div>
@@ -948,20 +1334,20 @@ export default function Outfield() {
                 <div className="ob-roles">
                   <div className="ob-role-card player" onClick={()=>{setScreen("home");setNav("home");}}>
                     <div className="ob-role-ico">
-                      <Users size={20} color="var(--green-v)" strokeWidth={2}/>
+                      <span style={{fontSize:22}}>⚽</span>
                     </div>
-                    <div className="ob-role-title">Book a Ground</div>
-                    <div className="ob-role-desc">Browse, compare & book sports venues near you</div>
+                    <div className="ob-role-title">Find & Book</div>
+                    <div className="ob-role-desc">Browse grounds, book slots & find teammates</div>
                     <div className="ob-role-arrow">
                       <ChevronRight size={13} color="var(--green-v)" strokeWidth={2.5}/>
                     </div>
                   </div>
                   <div className="ob-role-card owner" onClick={()=>{setScreen("owner");setNav("home");}}>
                     <div className="ob-role-ico">
-                      <MapPin size={20} color="var(--orange)" strokeWidth={2}/>
+                      <span style={{fontSize:22}}>🏟️</span>
                     </div>
                     <div className="ob-role-title">List My Ground</div>
-                    <div className="ob-role-desc">Get bookings & manage your venue for free</div>
+                    <div className="ob-role-desc">Manage your venue & get bookings for free</div>
                     <div className="ob-role-arrow">
                       <ChevronRight size={13} color="var(--orange)" strokeWidth={2.5}/>
                     </div>
@@ -1064,7 +1450,7 @@ export default function Outfield() {
                       style={on?{background:s.bg}:{}}
                       onClick={()=>setSport(s.id)}>
                       <div className="sport-chip-ico" style={{background:on?"rgba(255,255,255,.15)":s.bg}}>
-                        <s.Icon size={13} color={s.fg} strokeWidth={2}/>
+                        <NeonSportIcon id={s.id} color={on?"#fff":s.neon} size={15}/>
                       </div>
                       <span className="sport-chip-label" style={on?{color:s.fg}:{}}>{s.label}</span>
                     </div>
@@ -1149,7 +1535,7 @@ export default function Outfield() {
                               const sp=sportObj(sid);
                               return (
                                 <div key={sid} className="sport-dot-chip" style={{background:sp.bg}} title={sp.label}>
-                                  <sp.Icon size={12} color={sp.fg} strokeWidth={2}/>
+                                  <NeonSportIcon id={sid} color={sp.neon} size={13}/>
                                 </div>
                               );
                             })}
@@ -1167,7 +1553,7 @@ export default function Outfield() {
 
         {/* ═══ DETAIL ═══ */}
         {screen === "detail" && ground && (
-          <div className="screen active detail fade">
+          <div className="screen active detail scale-in">
             <div style={{overflowY:"auto",flex:1,paddingBottom:98}}>
               <div className="detail-hero">
                 {gImg(ground)
@@ -1226,8 +1612,8 @@ export default function Outfield() {
                     const sp=sportObj(sid);
                     return (
                       <div key={sid} className="sport-pill-detail"
-                        style={{background:`${sp.bg}18`,borderColor:`${sp.bg}40`,color:sp.bg}}>
-                        <sp.Icon size={14} color={sp.bg} strokeWidth={2}/> {sp.label}
+                        style={{background:`${sp.bg}18`,borderColor:`${sp.bg}40`,color:sp.fg}}>
+                        <NeonSportIcon id={sid} color={sp.neon} size={15}/> {sp.label}
                       </div>
                     );
                   })}
@@ -1253,8 +1639,8 @@ export default function Outfield() {
                         return (
                           <div key={c.id} className={`court-pick-card ${court?.id===c.id?"sel":""}`}
                             onClick={()=>{setCourt(c);setSlot(null);}}>
-                            <div className="court-pick-ico" style={{background:`${sp.bg}20`}}>
-                              <sp.Icon size={18} color={sp.bg} strokeWidth={2}/>
+                            <div className="court-pick-ico" style={{background:`${sp.bg}25`}}>
+                              <NeonSportIcon id={c.sports[0]} color={sp.neon} size={22}/>
                             </div>
                             <div style={{flex:1}}>
                               <div className="court-pick-name">{c.name}</div>
@@ -1268,7 +1654,7 @@ export default function Outfield() {
                               <div style={{display:"flex",gap:5,marginTop:5,flexWrap:"wrap"}}>
                                 {c.sports.map(sid=>{
                                   const s2=sportObj(sid);
-                                  return <span key={sid} style={{fontSize:9,fontWeight:700,background:`${s2.bg}15`,color:s2.bg,border:`1px solid ${s2.bg}30`,borderRadius:100,padding:"2px 7px",display:"flex",alignItems:"center",gap:3}}><s2.Icon size={8} strokeWidth={2}/>{s2.label}</span>;
+                                  return <span key={sid} style={{fontSize:9,fontWeight:700,background:`${s2.bg}15`,color:s2.fg,border:`1px solid ${s2.bg}30`,borderRadius:100,padding:"2px 7px",display:"flex",alignItems:"center",gap:3}}><NeonSportIcon id={sid} color={s2.neon} size={10}/>{s2.label}</span>;
                                 })}
                               </div>
                             </div>
@@ -1400,7 +1786,7 @@ export default function Outfield() {
 
         {/* ═══ CONFIRM ═══ */}
         {screen === "confirm" && ground && curSlot && (
-          <div className="screen active confirm fade">
+          <div className="screen active confirm slide-in-right">
             <div className="confirm-head">
               <div className="confirm-head-glow"/>
               <button className="confirm-back-btn" onClick={()=>setScreen("detail")}>
@@ -1412,10 +1798,16 @@ export default function Outfield() {
             <div className="confirm-body">
               <div className="c-block">
                 <div className="c-block-title">Booking Summary</div>
+                {bookingCount >= MAX_BOOKINGS && (
+                  <div className="booking-limit-note">
+                    <AlertCircle size={13} color="#F97316" strokeWidth={2}/>
+                    You've reached the 2-booking limit. This lifts once a previous slot ends.
+                  </div>
+                )}
                 {[
                   ["Facility", ground.name],
                   ...(court ? [["Ground", court.name]] : []),
-                  ["Date", `${date}, 2025`],
+                  ["Date", `${date}, 2026`],
                   ["Time Slot", curSlot.time],
                   ["Location", ground.area],
                   ...(lfp ? [["Matchmaking","Alert ON"]] : []),
@@ -1425,9 +1817,22 @@ export default function Outfield() {
                     <span className="c-val" style={l==="Matchmaking"?{color:"var(--orange)"}:{}}>{v}</span>
                   </div>
                 ))}
+                {/* Player count pricing */}
+                <div className="player-count-row">
+                  <div className="player-count-label">Number of Players</div>
+                  <div className="player-count-ctrl">
+                    <div className="pcc-btn" onClick={()=>setPlayerCount(p=>Math.max(1,p-1))}>−</div>
+                    <div className="pcc-val">{playerCount}</div>
+                    <div className="pcc-btn" onClick={()=>setPlayerCount(p=>Math.min(22,p+1))}>+</div>
+                  </div>
+                </div>
+                <div className="price-calc-row">
+                  <div className="price-calc-label">Rs {curSlot.price?.toLocaleString()} × {playerCount} player{playerCount!==1?"s":""}</div>
+                  <div className="price-calc-total">Rs {(curSlot.price * playerCount)?.toLocaleString()}</div>
+                </div>
                 <div className="c-row">
                   <span className="c-label">Total Amount</span>
-                  <span className="c-total">Rs {curSlot.price?.toLocaleString()}</span>
+                  <span className="c-total">Rs {(curSlot.price * playerCount)?.toLocaleString()}</span>
                 </div>
               </div>
               <div className="c-block">
@@ -1453,8 +1858,13 @@ export default function Outfield() {
                   </div>
                 )}
               </div>
-              <button className="book-btn" onClick={()=>setScreen("success")}>
-                Confirm Booking · Rs {curSlot.price?.toLocaleString()}
+              <button className="book-btn"
+                disabled={bookingCount >= MAX_BOOKINGS}
+                style={bookingCount >= MAX_BOOKINGS ? {opacity:.5,cursor:"not-allowed"} : {}}
+                onClick={()=>{setBookingCount(p=>p+1);setScreen("success");}}>
+                {bookingCount >= MAX_BOOKINGS
+                  ? "Booking Limit Reached (2 max)"
+                  : `Confirm Booking · Rs ${(curSlot.price * playerCount)?.toLocaleString()}`}
               </button>
             </div>
           </div>
@@ -1462,7 +1872,7 @@ export default function Outfield() {
 
         {/* ═══ SUCCESS ═══ */}
         {screen === "success" && (
-          <div className="screen active success fade">
+          <div className="screen active success slide-in-right">
             <div className="success-ring">
               <Check size={40} color="#fff" strokeWidth={3}/>
             </div>
@@ -1561,9 +1971,9 @@ export default function Outfield() {
                           </div>
                         </div>
                         <div className="mc-sport-tag"
-                          style={{background:`${sp.bg}15`,color:sp.bg,border:`1px solid ${sp.bg}30`}}>
+                          style={{background:`${sp.bg}15`,color:sp.fg,border:`1px solid ${sp.bg}30`}}>
                           <div style={{display:"flex",alignItems:"center",gap:4}}>
-                            <sp.Icon size={10} color={sp.bg} strokeWidth={2}/> {sp.label}
+                            <NeonSportIcon id={sp.id} color={sp.neon} size={12}/> {sp.label}
                           </div>
                         </div>
                       </div>
@@ -1611,8 +2021,8 @@ export default function Outfield() {
                           <div>
                             <div className="tc-team">{tc.teamName}</div>
                             <div style={{display:"flex",alignItems:"center",gap:6,marginTop:3}}>
-                              <div style={{display:"flex",alignItems:"center",gap:4,fontSize:10,fontWeight:700,color:sp.bg}}>
-                                <sp.Icon size={10} strokeWidth={2}/>{sp.label}
+                              <div style={{display:"flex",alignItems:"center",gap:4,fontSize:10,fontWeight:700,color:sp.neon}}>
+                                <NeonSportIcon id={tc.sport} color={sp.neon} size={13}/>{sp.label}
                               </div>
                             </div>
                           </div>
@@ -1696,7 +2106,7 @@ export default function Outfield() {
                     <div key={s.id} className={`sport-chip ${on?"on":""}`}
                       style={on?{background:s.bg}:{}} onClick={()=>setSport(s.id)}>
                       <div className="sport-chip-ico" style={{background:on?"rgba(255,255,255,.15)":s.bg}}>
-                        <s.Icon size={13} color={s.fg} strokeWidth={2}/>
+                        <NeonSportIcon id={s.id} color={on?"#fff":s.neon} size={14}/>
                       </div>
                       <span className="sport-chip-label" style={on?{color:s.fg}:{}}>{s.label}</span>
                     </div>
@@ -1704,17 +2114,62 @@ export default function Outfield() {
                 })}
               </div>
             </div>
-            <div style={{padding:"8px 18px 0"}}>
-              <div className="search-box" style={{background:"#fff",border:"1.5px solid var(--border)"}}>
+
+            {/* Filter button row */}
+            <div style={{padding:"0 18px 8px",display:"flex",alignItems:"center",gap:8}}>
+              <div className="search-box" style={{background:"#fff",border:"1.5px solid var(--border)",flex:1}}>
                 <Search size={14} color="var(--ink4)" strokeWidth={2}/>
                 <input className="search-input" style={{color:"var(--ink)"}} placeholder="Search by name or area..."
                   value={search} onChange={e=>setSearch(e.target.value)}/>
               </div>
-              <div style={{height:12}}/>
+              <div style={{width:42,height:42,borderRadius:12,background:showFilterPanel||timeFilterFrom?"var(--ink)":"#fff",border:`1.5px solid ${showFilterPanel||timeFilterFrom?"var(--ink)":"var(--border)"}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,transition:"all .2s"}}
+                onClick={()=>setShowFilterPanel(p=>!p)}>
+                <SlidersHorizontal size={16} color={showFilterPanel||timeFilterFrom?"#fff":"var(--ink4)"} strokeWidth={2}/>
+              </div>
+            </div>
+
+            {/* Time filter panel */}
+            {showFilterPanel && (
+              <div className="filter-panel">
+                <div className="filter-panel-title">
+                  Filters
+                  {(timeFilterFrom||timeFilterTo) && (
+                    <span className="filter-clear" onClick={()=>{setTimeFilterFrom("");setTimeFilterTo("");}}>Clear all</span>
+                  )}
+                </div>
+                <div style={{fontSize:11,fontWeight:700,color:"var(--ink2)",marginBottom:8}}>Available Time</div>
+                <div className="time-filter-row">
+                  <span className="time-filter-label">From</span>
+                  <select className="time-filter-select" value={timeFilterFrom} onChange={e=>setTimeFilterFrom(e.target.value)}>
+                    <option value="">Any time</option>
+                    {["06:00","07:00","08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00","20:00","21:00","22:00"].map(t=>(
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="time-filter-row">
+                  <span className="time-filter-label">To</span>
+                  <select className="time-filter-select" value={timeFilterTo} onChange={e=>setTimeFilterTo(e.target.value)}>
+                    <option value="">Any time</option>
+                    {["07:00","08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00","20:00","21:00","22:00","23:00"].map(t=>(
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                {timeFilterFrom && timeFilterTo && (
+                  <div className="filter-active-badge" style={{marginTop:4}}>
+                    <CheckCircle size={10} strokeWidth={2.5}/>
+                    Showing grounds with slots {timeFilterFrom}–{timeFilterTo}
+                  </div>
+                )}
+              </div>
+            )}
+            <div style={{padding:"0 18px 0"}}>
               {filtered.length===0 && (
                 <div className="empty">
                   <div className="empty-ico-wrap"><Search size={24} color="var(--ink4)" strokeWidth={1.5}/></div>
-                  <div className="empty-t">No results</div>
+                  <div className="empty-t">{timeFilterFrom?"No grounds available at that time":"No results"}</div>
+                  <div className="empty-s">{timeFilterFrom?"Try adjusting your time filter":"Try a different search or sport"}</div>
                 </div>
               )}
               <div className="glist">
@@ -2012,7 +2467,7 @@ export default function Outfield() {
                                     : [...court.sports, s.id];
                                   setOwnerCourts(nc);
                                 }}>
-                                <s.Icon size={10} strokeWidth={2}/>{s.label}
+                                <NeonSportIcon id={s.id} color={court.sports.includes(s.id)?s.neon:s.bg} size={11}/>{s.label}
                               </div>
                             ))}
                           </div>
