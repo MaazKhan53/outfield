@@ -58,13 +58,15 @@ const NeonSportIcon = ({ id, color="#fff", size=18 }) => {
       /* Cricket bat angled + ball */
       <svg width={s} height={h} viewBox="0 0 20 20">
         {glow}
-        {/* Bat blade */}
-        <rect x="3" y="9" width="6" height="10" rx="1.5" transform="rotate(-35 6 14)" strokeWidth="1.5" {...base}/>
+        {/* Bat blade - simple angled rectangle */}
+        <line x1="4" y1="16" x2="12" y2="4" strokeWidth="4" strokeLinecap="round" {...base}/>
         {/* Bat handle */}
-        <line x1="10" y1="5" x2="13.5" y2="1.5" strokeWidth="1.3" {...base}/>
+        <line x1="12" y1="4" x2="15" y2="1.5" strokeWidth="1.8" strokeLinecap="round" {...base}/>
         {/* Ball */}
-        <circle cx="15.5" cy="5.5" r="2.5" strokeWidth="1.4" {...base}/>
-        <path d="M14 4.2 Q15.5 5.5 17 4.2" strokeWidth="0.9" {...base}/>
+        <circle cx="16" cy="13" r="2.8" strokeWidth="1.5" {...base}/>
+        {/* Ball seam */}
+        <path d="M13.8 11.5 Q16 13 18.2 11.5" strokeWidth="1" {...base}/>
+        <path d="M13.8 14.5 Q16 13 18.2 14.5" strokeWidth="1" {...base}/>
       </svg>
     ),
     football: (
@@ -116,19 +118,19 @@ const NeonSportIcon = ({ id, color="#fff", size=18 }) => {
       </svg>
     ),
     badminton: (
-      /* Shuttlecock */
+      /* Shuttlecock - cleaner design */
       <svg width={s} height={h} viewBox="0 0 20 20">
         {glow}
-        {/* Cork base */}
-        <ellipse cx="10" cy="15.5" rx="2.5" ry="2" strokeWidth="1.4" {...base}/>
-        {/* Feathers fanning out */}
-        <line x1="10" y1="13.5" x2="5"  y2="3"  strokeWidth="1.1" {...base}/>
-        <line x1="10" y1="13.5" x2="7"  y2="2.5"strokeWidth="1.1" {...base}/>
-        <line x1="10" y1="13.5" x2="10" y2="2"  strokeWidth="1.1" {...base}/>
-        <line x1="10" y1="13.5" x2="13" y2="2.5"strokeWidth="1.1" {...base}/>
-        <line x1="10" y1="13.5" x2="15" y2="3"  strokeWidth="1.1" {...base}/>
-        {/* Feather rim */}
-        <path d="M5 3 Q7.5 4.5 10 4 Q12.5 4.5 15 3" strokeWidth="1" {...base}/>
+        {/* Cork base - rounded bottom */}
+        <ellipse cx="10" cy="16" rx="2.5" ry="2" strokeWidth="1.5" {...base}/>
+        {/* Feather skirt rim */}
+        <ellipse cx="10" cy="7" rx="6" ry="2" strokeWidth="1.2" {...base}/>
+        {/* Feather shafts */}
+        <line x1="4" y1="7" x2="8.2" y2="14" strokeWidth="1.1" {...base}/>
+        <line x1="7" y1="5.2" x2="9.5" y2="14" strokeWidth="1.1" {...base}/>
+        <line x1="10" y1="5" x2="10" y2="14" strokeWidth="1.1" {...base}/>
+        <line x1="13" y1="5.2" x2="10.5" y2="14" strokeWidth="1.1" {...base}/>
+        <line x1="16" y1="7" x2="11.8" y2="14" strokeWidth="1.1" {...base}/>
       </svg>
     ),
     tennis: (
@@ -162,19 +164,21 @@ const NeonSportIcon = ({ id, color="#fff", size=18 }) => {
       </svg>
     ),
     squash: (
-      /* Squash racket — teardrop head */
+      /* Squash racket - distinct teardrop with handle */
       <svg width={s} height={h} viewBox="0 0 20 20">
         {glow}
-        {/* Teardrop head */}
-        <path d="M10 2 Q16 4 16 10 Q16 15 10 15 Q4 15 4 10 Q4 4 10 2Z" strokeWidth="1.5" {...base}/>
-        {/* Strings */}
-        <line x1="7"  y1="4.5" x2="7"  y2="13.5" strokeWidth="0.7" {...base}/>
-        <line x1="10" y1="3"   x2="10" y2="15"   strokeWidth="0.7" {...base}/>
-        <line x1="13" y1="4.5" x2="13" y2="13.5" strokeWidth="0.7" {...base}/>
-        <line x1="4.5" y1="8"  x2="15.5" y2="8"  strokeWidth="0.7" {...base}/>
-        <line x1="4"   y1="11" x2="16"   y2="11" strokeWidth="0.7" {...base}/>
+        {/* Teardrop head - wider top */}
+        <path d="M10 2.5 C14.5 2.5 16.5 5.5 16.5 9 C16.5 13 13.5 15 10 15 C6.5 15 3.5 13 3.5 9 C3.5 5.5 5.5 2.5 10 2.5Z" strokeWidth="1.5" {...base}/>
+        {/* Strings vertical */}
+        <line x1="7"  y1="4"  x2="6.5" y2="14" strokeWidth="0.7" {...base}/>
+        <line x1="10" y1="3"  x2="10"  y2="15" strokeWidth="0.7" {...base}/>
+        <line x1="13" y1="4"  x2="13.5" y2="14" strokeWidth="0.7" {...base}/>
+        {/* Strings horizontal */}
+        <line x1="4.5" y1="7"  x2="15.5" y2="7"  strokeWidth="0.7" {...base}/>
+        <line x1="4"   y1="10" x2="16"   y2="10" strokeWidth="0.7" {...base}/>
+        <line x1="4.5" y1="13" x2="15.5" y2="13" strokeWidth="0.7" {...base}/>
         {/* Handle */}
-        <line x1="10" y1="15" x2="10" y2="19" strokeWidth="1.8" {...base}/>
+        <line x1="10" y1="15" x2="10" y2="19" strokeWidth="2" strokeLinecap="round" {...base}/>
       </svg>
     ),
     hockey: (
@@ -426,39 +430,45 @@ const css = `
 }
 html,body{
   height:100%;
+  margin:0;padding:0;
   font-family:'Inter',sans-serif;
   -webkit-font-smoothing:antialiased;
   overscroll-behavior:none;
+  background:#000;
 }
 .app{
-  max-width:420px;
+  max-width:430px;
+  width:100%;
   margin:0 auto;
   background:var(--bg);
   min-height:100vh;
-  min-height:100dvh;
+  min-height:100svh;
   position:relative;
   overflow-x:hidden;
-  box-shadow:0 0 80px rgba(0,0,0,.2);
+  box-shadow:0 0 80px rgba(0,0,0,.4);
+}
+/* Desktop centering */
+@media(min-width:431px){
+  body{display:flex;align-items:flex-start;justify-content:center;}
+  .app{min-height:100vh;min-height:100svh;}
+  .navbar{max-width:430px;}
 }
 .screen{
   display:none;
   flex-direction:column;
-  min-height:100vh;
-  min-height:100dvh;
+  width:100%;
 }
 .screen.active{display:flex;}
+/* Fix zoom on tap - prevent iOS auto-zoom */
+input,select,textarea{font-size:16px !important;}
 
 /* ── TRANSITIONS ── */
-.slide-in-right{animation:slideInRight .28s cubic-bezier(.25,.46,.45,.94) forwards;}
-.slide-in-left{animation:slideInLeft .28s cubic-bezier(.25,.46,.45,.94) forwards;}
-.slide-out-right{animation:slideOutRight .28s cubic-bezier(.25,.46,.45,.94) forwards;}
-.slide-out-left{animation:slideOutLeft .28s cubic-bezier(.25,.46,.45,.94) forwards;}
-.scale-in{animation:scaleIn .3s cubic-bezier(.34,1.56,.64,1) forwards;}
-@keyframes slideInRight{from{transform:translateX(100%);opacity:.8;}to{transform:translateX(0);opacity:1;}}
-@keyframes slideInLeft{from{transform:translateX(-100%);opacity:.8;}to{transform:translateX(0);opacity:1;}}
-@keyframes slideOutRight{from{transform:translateX(0);opacity:1;}to{transform:translateX(100%);opacity:.8;}}
-@keyframes slideOutLeft{from{transform:translateX(0);opacity:1;}to{transform:translateX(-100%);opacity:.8;}}
-@keyframes scaleIn{from{transform:scale(.94) translateY(8px);opacity:0;}to{transform:scale(1) translateY(0);opacity:1;}}
+.slide-in-right{animation:slideInRight .25s cubic-bezier(.25,.46,.45,.94) forwards;}
+.slide-in-left{animation:slideInLeft .25s cubic-bezier(.25,.46,.45,.94) forwards;}
+.scale-in{animation:scaleIn .28s cubic-bezier(.34,1.56,.64,1) forwards;}
+@keyframes slideInRight{from{transform:translateX(100%);opacity:.9;}to{transform:translateX(0);opacity:1;}}
+@keyframes slideInLeft{from{transform:translateX(-100%);opacity:.9;}to{transform:translateX(0);opacity:1;}}
+@keyframes scaleIn{from{transform:scale(.96) translateY(6px);opacity:0;}to{transform:scale(1) translateY(0);opacity:1;}}
 
 /* ── SPLASH ── */
 .splash{
@@ -600,8 +610,8 @@ html,body{
 .ob-sport-tag{display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:100px;font-size:10px;font-weight:700;white-space:nowrap;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:rgba(255,255,255,.5);flex-shrink:0;}
 
 /* ── HOME ── */
-.home{background:var(--bg);overflow-y:auto;padding-bottom:84px;}
-.home-head{background:var(--ink);padding:50px 18px 0;position:relative;overflow:hidden;}
+.home{background:var(--bg);overflow-y:auto;padding-bottom:84px;min-height:100svh;}
+.home-head{background:var(--ink);padding:52px 18px 0;position:relative;overflow:hidden;}
 .home-head-blob{position:absolute;top:-80px;right:-60px;width:260px;height:260px;background:radial-gradient(circle,rgba(34,197,94,.1) 0%,transparent 65%);pointer-events:none;}
 .home-head-blob2{position:absolute;bottom:-40px;left:-40px;width:180px;height:180px;background:radial-gradient(circle,rgba(59,130,246,.07) 0%,transparent 65%);pointer-events:none;}
 .hrow{position:relative;z-index:1;display:flex;justify-content:space-between;align-items:center;}
@@ -796,8 +806,8 @@ html,body{
 .sdb-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink2);padding:4px 0;font-weight:500;}
 
 /* ── MATCHMAKING ── */
-.match{background:var(--bg);overflow-y:auto;padding-bottom:88px;}
-.match-head{background:var(--ink);padding:50px 18px 26px;position:relative;overflow:hidden;}
+.match{background:var(--bg);overflow-y:auto;padding-bottom:88px;min-height:100svh;}
+.match-head{background:var(--ink);padding:52px 18px 26px;position:relative;overflow:hidden;}
 .match-head::after{content:'';position:absolute;bottom:-18px;left:0;right:0;height:36px;background:var(--bg);border-radius:22px 22px 0 0;}
 .match-glow{position:absolute;top:-30px;right:-20px;width:160px;height:160px;background:radial-gradient(circle,rgba(249,115,22,.15),transparent 70%);}
 .match-title{font-family:'Sora',sans-serif;font-size:20px;font-weight:900;color:#fff;letter-spacing:-.3px;}
@@ -819,15 +829,15 @@ html,body{
 .mc-join.done{background:transparent;color:var(--orange);border:1.5px solid var(--orange);}
 
 /* ── EXPLORE ── */
-.explore{background:var(--bg);overflow-y:auto;padding-bottom:88px;}
-.exp-head{background:var(--ink);padding:50px 18px 26px;position:relative;overflow:hidden;}
+.explore{background:var(--bg);overflow-y:auto;padding-bottom:88px;min-height:100svh;}
+.exp-head{background:var(--ink);padding:52px 18px 26px;position:relative;overflow:hidden;}
 .exp-head::after{content:'';position:absolute;bottom:-18px;left:0;right:0;height:36px;background:var(--bg);border-radius:22px 22px 0 0;}
 .exp-title{font-family:'Sora',sans-serif;font-size:20px;font-weight:900;color:#fff;letter-spacing:-.3px;}
 .exp-sub{font-size:11px;color:rgba(255,255,255,.35);margin-top:3px;}
 
 /* ── PROFILE ── */
-.profile{background:var(--bg);overflow-y:auto;padding-bottom:88px;}
-.prof-head{background:var(--ink);padding:50px 18px 44px;text-align:center;position:relative;overflow:hidden;}
+.profile{background:var(--bg);overflow-y:auto;padding-bottom:88px;min-height:100svh;}
+.prof-head{background:var(--ink);padding:52px 18px 44px;text-align:center;position:relative;overflow:hidden;}
 .prof-head::after{content:'';position:absolute;bottom:-18px;left:0;right:0;height:36px;background:var(--bg);border-radius:22px 22px 0 0;}
 .prof-glow{position:absolute;inset:0;background:radial-gradient(ellipse 60% 50% at 50% 40%,rgba(34,197,94,.1) 0%,transparent 70%);pointer-events:none;}
 .prof-av-wrap{position:relative;display:inline-block;margin-bottom:2px;}
@@ -1078,8 +1088,52 @@ export default function Outfield() {
   const [bookRef]                 = useState("OTF-" + Math.random().toString(36).substring(2,6).toUpperCase());
   const fileRef               = useRef(null);
   const [date, setDate]       = useState(DATES[0]);
+  const touchStartX           = useRef(null);
+  const touchStartY           = useRef(null);
+
+  // Tab order for swipe navigation
+  const TAB_ORDER = ["home","explore","match","profile"];
+
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleTouchEnd = (e) => {
+    if(touchStartX.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    const dy = e.changedTouches[0].clientY - touchStartY.current;
+    // Only trigger if horizontal swipe is dominant and long enough
+    if(Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 55) {
+      const mainScreens = ["home","explore","match","profile"];
+      if(!mainScreens.includes(screen)) return;
+      const idx = TAB_ORDER.indexOf(nav);
+      if(dx < 0 && idx < TAB_ORDER.length - 1) {
+        // Swipe left → go to next tab
+        goNav(TAB_ORDER[idx + 1]);
+      } else if(dx > 0 && idx > 0) {
+        // Swipe right → go to previous tab
+        goNav(TAB_ORDER[idx - 1]);
+      }
+    }
+    touchStartX.current = null;
+    touchStartY.current = null;
+  };
 
   useEffect(() => { const t = setTimeout(() => setScreen("onboard"), 2200); return () => clearTimeout(t); }, []);
+
+  // Prevent zoom on double-tap
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="viewport"]');
+    if(meta) {
+      meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
+    } else {
+      const m = document.createElement('meta');
+      m.name = 'viewport';
+      m.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
+      document.head.appendChild(m);
+    }
+  }, []);
 
   useEffect(() => {
     if (screen !== "home") return;
@@ -1150,7 +1204,7 @@ export default function Outfield() {
           {toast}
         </div>
       )}
-      <div className="app">
+      <div className="app" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
 
         {/* ═══ RATING MODAL ═══ */}
         {ratingModal && !ratingDone && (
