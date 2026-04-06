@@ -473,9 +473,15 @@ input,select,textarea{font-size:16px !important;}
 /* ── SPLASH ── */
 .splash{
   background:#040608;
-  align-items:center;justify-content:center;
-  position:relative;overflow:hidden;
+  align-items:center;
+  justify-content:center;
+  position:fixed;
+  top:0;left:0;right:0;bottom:0;
+  width:100%;
+  height:100%;
+  overflow:hidden;
   flex-direction:column;
+  z-index:999;
 }
 /* Dark vignette bg */
 .splash-bg-grad{
@@ -1067,10 +1073,13 @@ export default function Outfield() {
   const [blockedSlots, setBlockedSlots] = useState([]);
   const [ownerAmenities, setOwnerAmenities] = useState([]);
   const [ownerSection, setOwnerSection] = useState("list");
-  const [ownerFormStep, setOwnerFormStep] = useState("facility"); // "facility" | "courts"
+  const [ownerFormStep, setOwnerFormStep] = useState("facility");
   const [ownerCourts, setOwnerCourts] = useState([
     {id:1, name:"Ground 1", sports:[], type:"Outdoor", capacity:"", priceBase:"", pricePeak:"", slotDur:"2 hr", notes:""}
   ]);
+  const [ownerFacilityName, setOwnerFacilityName] = useState("");
+  const [ownerPhone, setOwnerPhone]               = useState("");
+  const [ownerFormError, setOwnerFormError]       = useState("");
   const [heroIdx, setHeroIdx] = useState(0);
   const [court, setCourt]       = useState(null);
   const [ratingModal, setRatingModal] = useState(false);
@@ -1103,16 +1112,16 @@ export default function Outfield() {
     if(touchStartX.current === null) return;
     const dx = e.changedTouches[0].clientX - touchStartX.current;
     const dy = e.changedTouches[0].clientY - touchStartY.current;
-    // Only trigger if horizontal swipe is dominant and long enough
-    if(Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 55) {
+    // Require a much stronger horizontal intent — dx must be large AND
+    // clearly more horizontal than vertical (ratio > 2.5:1)
+    // This prevents conflict with horizontal scroll areas like sport chips
+    if(Math.abs(dx) > 90 && Math.abs(dx) > Math.abs(dy) * 2.5) {
       const mainScreens = ["home","explore","match","profile"];
       if(!mainScreens.includes(screen)) return;
       const idx = TAB_ORDER.indexOf(nav);
       if(dx < 0 && idx < TAB_ORDER.length - 1) {
-        // Swipe left → go to next tab
         goNav(TAB_ORDER[idx + 1]);
       } else if(dx > 0 && idx > 0) {
-        // Swipe right → go to previous tab
         goNav(TAB_ORDER[idx - 1]);
       }
     }
@@ -2324,14 +2333,21 @@ export default function Outfield() {
                       This is your overall facility/complex profile. You will add each individual ground separately in Step 2.
                     </div>
                     {[
-                      ["Facility / Complex Name","e.g. DHA Sports Complex"],
-                      ["Owner / Manager Name","Your full name"],
-                      ["Area / Neighbourhood","e.g. DHA Phase 6, Karachi"],
-                      ["City","e.g. Karachi, Lahore, Islamabad"],
-                      ["Full Address","Street, Block, Area — shown to players for directions"],
-                      ["Google Maps Link","Paste your Google Maps share link"],
-                    ].map(([l,p])=>(
-                      <div key={l} className="fg"><label className="flbl">{l}</label><input className="finput" placeholder={p}/></div>
+                      ["Facility / Complex Name","e.g. DHA Sports Complex", true],
+                      ["Owner / Manager Name","Your full name", true],
+                      ["Area / Neighbourhood","e.g. DHA Phase 6, Karachi", true],
+                      ["City","e.g. Karachi, Lahore, Islamabad", false],
+                      ["Full Address","Street, Block, Area — shown to players for directions", false],
+                      ["Google Maps Link","Paste your Google Maps share link", false],
+                    ].map(([l,p,required])=>(
+                      <div key={l} className="fg">
+                        <label className="flbl">{l}{required && <span style={{color:"var(--red)",marginLeft:3}}>*</span>}</label>
+                        <input className="finput" placeholder={p}
+                          value={l==="Facility / Complex Name" ? ownerFacilityName : undefined}
+                          onChange={l==="Facility / Complex Name" ? e=>setOwnerFacilityName(e.target.value) : undefined}
+                          style={required && ownerFormError && !ownerFacilityName && l==="Facility / Complex Name" ? {borderColor:"var(--red)"} : {}}
+                        />
+                      </div>
                     ))}
                     <div className="fg">
                       <label className="flbl">Facility Description</label>
@@ -2443,17 +2459,39 @@ export default function Outfield() {
                   {/* Contact */}
                   <div className="form-block">
                     <div className="form-block-t">Contact</div>
-                    <div className="fg"><label className="flbl">Phone Number</label><input className="finput" type="tel" placeholder="03XX-XXXXXXX"/></div>
+                    <div className="fg">
+                      <label className="flbl">Phone Number <span style={{color:"var(--red)"}}>*</span></label>
+                      <input className="finput" type="tel" placeholder="03XX-XXXXXXX"
+                        value={ownerPhone} onChange={e=>setOwnerPhone(e.target.value)}
+                        style={ownerFormError && !ownerPhone ? {borderColor:"var(--red)"} : {}}/>
+                    </div>
                     <div className="fg"><label className="flbl">WhatsApp (optional)</label><input className="finput" type="tel" placeholder="03XX-XXXXXXX"/></div>
                     <div className="fg"><label className="flbl">Instagram Handle (optional)</label><input className="finput" placeholder="@yourfacility"/></div>
                     <div className="fg"><label className="flbl">Facebook Page (optional)</label><input className="finput" placeholder="facebook.com/yourfacility"/></div>
                   </div>
 
-                  <button className="book-btn" onClick={()=>setOwnerFormStep("courts")}>
+                  {ownerFormError && (
+                    <div style={{background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:10,padding:"10px 14px",marginBottom:10,fontSize:12,color:"#DC2626",fontWeight:600,display:"flex",alignItems:"center",gap:7}}>
+                      <AlertCircle size={14} color="#DC2626" strokeWidth={2}/> {ownerFormError}
+                    </div>
+                  )}
+
+                  <button className="book-btn" onClick={()=>{
+                    if(!ownerFacilityName.trim()) {
+                      setOwnerFormError("Please enter your facility name to continue.");
+                      return;
+                    }
+                    if(!ownerPhone.trim()) {
+                      setOwnerFormError("Please enter a phone number to continue.");
+                      return;
+                    }
+                    setOwnerFormError("");
+                    setOwnerFormStep("courts");
+                  }}>
                     Continue — Add Individual Grounds →
                   </button>
                   <div style={{textAlign:"center",fontSize:11,color:"var(--ink4)",marginTop:10,marginBottom:20}}>
-                    Step 1 of 2 · You will add each ground separately next
+                    Step 1 of 2 · Fields marked <span style={{color:"var(--red)"}}>*</span> are required
                   </div>
                 </>)}
 
@@ -2590,7 +2628,17 @@ export default function Outfield() {
                   </div>
 
                   <button className="book-btn"
-                    onClick={()=>{showToast("Submitted! Live within 24 hours.");setScreen("home");setNav("home");}}>
+                    onClick={()=>{
+                      // Validate at least one court has a name and sport
+                      const invalid = ownerCourts.find(c => !c.name.trim() || c.sports.length === 0 || !c.priceBase);
+                      if(invalid) {
+                        showToast("Each ground needs a name, sport, and base price.");
+                        return;
+                      }
+                      showToast("Submitted! Live within 24 hours.");
+                      setScreen("home");
+                      setNav("home");
+                    }}>
                     Submit Facility for Review
                   </button>
                   <div style={{textAlign:"center",fontSize:11,color:"var(--ink4)",marginTop:10,marginBottom:20,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
