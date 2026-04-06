@@ -428,32 +428,23 @@ html,body{
   height:100%;
   font-family:'Inter',sans-serif;
   -webkit-font-smoothing:antialiased;
-  overflow:hidden;
-  position:fixed;
-  width:100%;
+  overscroll-behavior:none;
 }
 .app{
   max-width:420px;
   margin:0 auto;
   background:var(--bg);
-  height:100vh;
-  height:100dvh;
+  min-height:100vh;
+  min-height:100dvh;
   position:relative;
-  overflow:hidden;
+  overflow-x:hidden;
   box-shadow:0 0 80px rgba(0,0,0,.2);
-  display:flex;
-  flex-direction:column;
 }
 .screen{
   display:none;
   flex-direction:column;
-  height:100vh;
-  height:100dvh;
-  position:absolute;
-  top:0;left:0;right:0;bottom:0;
-  overflow-y:auto;
-  overflow-x:hidden;
-  -webkit-overflow-scrolling:touch;
+  min-height:100vh;
+  min-height:100dvh;
 }
 .screen.active{display:flex;}
 
