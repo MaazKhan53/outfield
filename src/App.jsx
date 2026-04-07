@@ -1161,7 +1161,7 @@ export default function Outfield() {
     setScreen(toScreen);
   };
 
-  const filtered = GROUNDS.filter(g => {
+  const filtered = activeGrounds.filter(g => {
     const ms = sport === "all" || g.sports.includes(sport);
     const mq = !search || g.name.toLowerCase().includes(search.toLowerCase()) || g.area.toLowerCase().includes(search.toLowerCase());
     // Time filter — check if any slot in the ground falls within the selected time range
@@ -1196,7 +1196,42 @@ export default function Outfield() {
     return g?.slots?.[d] || g?.slots?.["Mar 10"] || [];
   };
 
-  const featGrounds = [...GROUNDS].sort((a,b) => b.rating-a.rating).slice(0,5);
+  const [dbGrounds, setDbGrounds] = useState([]);
+
+useEffect(() => {
+  supabase
+    .from('grounds')
+    .select('*')
+    .eq('status', 'live')
+    .then(({ data, error }) => {
+      if (data && data.length > 0) {
+        const mapped = data.map(g => ({
+          id: g.id,
+          name: g.name,
+          area: g.area,
+          city: g.city,
+          distance: "—",
+          rating: g.rating || 4.5,
+          reviews: 0,
+          priceFrom: 2000,
+          sports: ["cricket","football"],
+          amenities: g.amenities ? g.amenities.split(',') : [],
+          openFrom: g.open_from || "06:00",
+          openTill: g.open_till || "23:00",
+          description: g.description,
+          img: g.img_url,
+          customImage: null,
+          isFacility: false,
+          courts: [],
+          slots: {"default":[]}
+        }));
+        setDbGrounds(mapped);
+      }
+    });
+}, []);
+
+const activeGrounds = dbGrounds.length > 0 ? dbGrounds : GROUNDS;
+const featGrounds = [...activeGrounds].sort((a,b) => b.rating-a.rating).slice(0,5);
 
   /* amenity icon helper */
   const AmenityIcon = ({name}) => {
