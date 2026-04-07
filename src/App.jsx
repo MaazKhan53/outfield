@@ -1094,6 +1094,7 @@ export default function Outfield() {
   const [playerCount, setPlayerCount]         = useState(1);
   const [bookingCount, setBookingCount]       = useState(0);
   const MAX_BOOKINGS = 2;
+  const [dbGrounds, setDbGrounds]             = useState([]);
   const [bookRef]                 = useState("OTF-" + Math.random().toString(36).substring(2,6).toUpperCase());
   const fileRef               = useRef(null);
   const [date, setDate]       = useState(DATES[0]);
@@ -1146,9 +1147,42 @@ export default function Outfield() {
 
   useEffect(() => {
     if (screen !== "home") return;
-    const t = setInterval(() => setHeroIdx(i => (i+1) % Math.min(GROUNDS.length,4)), 3600);
+    const t = setInterval(() => setHeroIdx(i => (i+1) % Math.min(activeGrounds.length,4)), 3600);
     return () => clearInterval(t);
   }, [screen]);
+
+  // Fetch real grounds from Supabase
+  useEffect(() => {
+    supabase
+      .from('grounds')
+      .select('*')
+      .eq('status', 'live')
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          const mapped = data.map(g => ({
+            id: g.id,
+            name: g.name,
+            area: g.area,
+            city: g.city,
+            distance: "—",
+            rating: g.rating || 4.5,
+            reviews: 0,
+            priceFrom: 2000,
+            sports: ["cricket","football"],
+            amenities: g.amenities ? g.amenities.split(',') : [],
+            openFrom: g.open_from || "06:00",
+            openTill: g.open_till || "23:00",
+            description: g.description,
+            img: g.img_url,
+            customImage: null,
+            isFacility: false,
+            courts: [],
+            slots: {"default":[]}
+          }));
+          setDbGrounds(mapped);
+        }
+      });
+  }, []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2700); };
 
@@ -1196,42 +1230,8 @@ export default function Outfield() {
     return g?.slots?.[d] || g?.slots?.["Mar 10"] || [];
   };
 
-  const [dbGrounds, setDbGrounds] = useState([]);
-
-useEffect(() => {
-  supabase
-    .from('grounds')
-    .select('*')
-    .eq('status', 'live')
-    .then(({ data, error }) => {
-      if (data && data.length > 0) {
-        const mapped = data.map(g => ({
-          id: g.id,
-          name: g.name,
-          area: g.area,
-          city: g.city,
-          distance: "—",
-          rating: g.rating || 4.5,
-          reviews: 0,
-          priceFrom: 2000,
-          sports: ["cricket","football"],
-          amenities: g.amenities ? g.amenities.split(',') : [],
-          openFrom: g.open_from || "06:00",
-          openTill: g.open_till || "23:00",
-          description: g.description,
-          img: g.img_url,
-          customImage: null,
-          isFacility: false,
-          courts: [],
-          slots: {"default":[]}
-        }));
-        setDbGrounds(mapped);
-      }
-    });
-}, []);
-
-const activeGrounds = dbGrounds.length > 0 ? dbGrounds : GROUNDS;
-const featGrounds = [...activeGrounds].sort((a,b) => b.rating-a.rating).slice(0,5);
+  const activeGrounds = dbGrounds.length > 0 ? dbGrounds : GROUNDS;
+  const featGrounds = [...activeGrounds].sort((a,b) => b.rating-a.rating).slice(0,5);
 
   /* amenity icon helper */
   const AmenityIcon = ({name}) => {
