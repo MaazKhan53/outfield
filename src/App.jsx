@@ -1147,7 +1147,7 @@ export default function Outfield() {
 
   useEffect(() => {
     if (screen !== "home") return;
-    const t = setInterval(() => setHeroIdx(i => (i+1) % Math.min(activeGrounds.length,4)), 3600);
+    const t = setInterval(() => setHeroIdx(i => (i+1) % 5), 3600);
     return () => clearInterval(t);
   }, [screen]);
 
