@@ -1195,6 +1195,8 @@ export default function Outfield() {
     setScreen(toScreen);
   };
 
+  const activeGrounds = dbGrounds.length > 0 ? dbGrounds : GROUNDS;
+
   const filtered = activeGrounds.filter(g => {
     const ms = sport === "all" || g.sports.includes(sport);
     const mq = !search || g.name.toLowerCase().includes(search.toLowerCase()) || g.area.toLowerCase().includes(search.toLowerCase());
@@ -1230,7 +1232,6 @@ export default function Outfield() {
     return g?.slots?.[d] || g?.slots?.["Mar 10"] || [];
   };
 
-  const activeGrounds = dbGrounds.length > 0 ? dbGrounds : GROUNDS;
   const featGrounds = [...activeGrounds].sort((a,b) => b.rating-a.rating).slice(0,5);
 
   /* amenity icon helper */
