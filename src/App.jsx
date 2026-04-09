@@ -1240,9 +1240,17 @@ export default function Outfield() {
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2700); };
 
+  const PAKISTAN_CITIES = [
+    "Karachi","Lahore","Islamabad","Rawalpindi","Peshawar",
+    "Quetta","Multan","Hyderabad","Faisalabad","Sialkot",
+    "Gujranwala","Bahawalpur","Sargodha","Sukkur","Larkana"
+  ];
+
   const handleSignUp = async () => {
-    if (!authName.trim()) { setAuthError("Please enter your name."); return; }
-    if (!authEmail.trim()) { setAuthError("Please enter your email."); return; }
+    if (!authName.trim())   { setAuthError("Full name is required."); return; }
+    if (!authPhone.trim())  { setAuthError("Phone number is required."); return; }
+    if (!authCity.trim())   { setAuthError("Please select your city."); return; }
+    if (!authEmail.trim())  { setAuthError("Email is required."); return; }
     if (authPassword.length < 6) { setAuthError("Password must be at least 6 characters."); return; }
     setAuthLoading(true); setAuthError("");
     const { data, error } = await supabase.auth.signUp({ email: authEmail, password: authPassword });
@@ -1253,9 +1261,9 @@ export default function Outfield() {
         name: authName,
         phone: authPhone,
         role: authRole,
-        city: authCity || "Karachi"
+        city: authCity
       });
-      setAuthUser({ name: authName, phone: authPhone, role: authRole, city: authCity || "Karachi" });
+      setAuthUser({ name: authName, phone: authPhone, role: authRole, city: authCity });
     }
     setAuthLoading(false);
   };
@@ -1272,6 +1280,31 @@ export default function Outfield() {
     await supabase.auth.signOut();
     setSession(null); setAuthUser(null);
     showToast("Logged out successfully");
+  };
+
+  const handleConfirmBooking = async () => {
+    if (!curSlot || !ground) return;
+    setBookingCount(p => p + 1);
+    // Save to Supabase if we have a real court ID (uuid format)
+    if (session?.user && ground.id && typeof ground.id === 'string' && ground.id.includes('-')) {
+      const ref = "OTF-" + Math.random().toString(36).substring(2,6).toUpperCase();
+      const timeFrom = curSlot.time?.split("–")[0] || "00:00";
+      const timeTo   = curSlot.time?.split("–")[1] || "02:00";
+      await supabase.from('bookings').insert({
+        court_id:       court?.id || null,
+        player_id:      session.user.id,
+        booking_date:   date,
+        start_time:     timeFrom,
+        end_time:       timeTo,
+        total_price:    (curSlot.price || 0) * playerCount,
+        player_count:   playerCount,
+        payment_method: pay,
+        status:         "confirmed",
+        booking_ref:    ref,
+        lfp_on:         lfp
+      });
+    }
+    setScreen("success");
   };
 
   const goNav = (n) => {
@@ -1366,16 +1399,19 @@ export default function Outfield() {
               {authMode === "signup" && (
                 <>
                   <div className="auth-field">
-                    <label className="auth-label">Full Name *</label>
-                    <input className="auth-input" placeholder="Your name" value={authName} onChange={e=>setAuthName(e.target.value)}/>
+                    <label className="auth-label">Full Name <span style={{color:"#DC2626"}}>*</span></label>
+                    <input className="auth-input" placeholder="Your full name" value={authName} onChange={e=>setAuthName(e.target.value)}/>
                   </div>
                   <div className="auth-field">
-                    <label className="auth-label">Phone Number</label>
+                    <label className="auth-label">Phone Number <span style={{color:"#DC2626"}}>*</span></label>
                     <input className="auth-input" placeholder="03XX-XXXXXXX" type="tel" value={authPhone} onChange={e=>setAuthPhone(e.target.value)}/>
                   </div>
                   <div className="auth-field">
-                    <label className="auth-label">City</label>
-                    <input className="auth-input" placeholder="e.g. Karachi" value={authCity} onChange={e=>setAuthCity(e.target.value)}/>
+                    <label className="auth-label">City <span style={{color:"#DC2626"}}>*</span></label>
+                    <select className="auth-input" style={{cursor:"pointer"}} value={authCity} onChange={e=>setAuthCity(e.target.value)}>
+                      <option value="">Select your city</option>
+                      {PAKISTAN_CITIES.map(c=><option key={c} value={c}>{c}</option>)}
+                    </select>
                   </div>
                   <div className="auth-field">
                     <label className="auth-label">I am a</label>
@@ -2107,7 +2143,10 @@ export default function Outfield() {
               <button className="book-btn"
                 disabled={bookingCount >= MAX_BOOKINGS}
                 style={bookingCount >= MAX_BOOKINGS ? {opacity:.5,cursor:"not-allowed"} : {}}
-                onClick={()=>{setBookingCount(p=>p+1);setScreen("success");}}>
+                onClick={()=>{
+                    if(bookingCount >= MAX_BOOKINGS) return;
+                    handleConfirmBooking();
+                  }}>
                 {bookingCount >= MAX_BOOKINGS
                   ? "Booking Limit Reached (2 max)"
                   : `Confirm Booking · Rs ${(curSlot.price * playerCount)?.toLocaleString()}`}
