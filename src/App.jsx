@@ -975,6 +975,27 @@ input,select,textarea{font-size:16px !important;}
 .tc-challenge-btn.sent{background:transparent;border:1.5px solid var(--ink);color:var(--ink);}
 .tc-pending-note{font-size:10px;color:var(--ink4);text-align:center;margin-top:7px;display:flex;align-items:center;justify-content:center;gap:4px;}
 
+/* ── AUTH ── */
+.auth-screen{min-height:100svh;background:var(--ink);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;}
+.auth-logo{font-family:'Sora',sans-serif;font-size:42px;font-weight:900;color:#fff;letter-spacing:-2px;margin-bottom:6px;text-align:center;}
+.auth-logo em{color:#00ff78;font-style:normal;text-shadow:0 0 14px rgba(0,255,120,.6);}
+.auth-tagline{font-size:12px;color:rgba(255,255,255,.3);text-align:center;margin-bottom:32px;letter-spacing:.5px;}
+.auth-card{background:#fff;border-radius:24px;padding:24px;width:100%;max-width:380px;box-shadow:0 20px 60px rgba(0,0,0,.3);}
+.auth-tabs{display:flex;background:var(--bg);border-radius:12px;padding:3px;margin-bottom:20px;}
+.auth-tab{flex:1;padding:9px;text-align:center;border-radius:10px;font-size:13px;font-weight:700;color:var(--ink4);cursor:pointer;transition:all .2s;font-family:'Inter',sans-serif;border:none;background:transparent;}
+.auth-tab.on{background:#fff;color:var(--ink);box-shadow:0 2px 8px rgba(0,0,0,.1);}
+.auth-field{margin-bottom:12px;}
+.auth-label{font-size:11px;font-weight:700;color:var(--ink2);margin-bottom:5px;display:block;}
+.auth-input{width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:12px;font-family:'Inter',sans-serif;font-size:15px;color:var(--ink);outline:none;transition:border-color .2s;box-sizing:border-box;}
+.auth-input:focus{border-color:#00ff78;}
+.auth-role-row{display:flex;gap:8px;margin-bottom:12px;}
+.auth-role-btn{flex:1;padding:10px;border:1.5px solid var(--border);border-radius:12px;font-size:12px;font-weight:700;color:var(--ink4);cursor:pointer;font-family:'Inter',sans-serif;background:#fff;transition:all .2s;text-align:center;}
+.auth-role-btn.on{border-color:var(--green);background:var(--green-l);color:var(--green-d);}
+.auth-submit{width:100%;background:#00ff78;border:none;border-radius:100px;padding:15px;font-family:'Sora',sans-serif;font-size:15px;font-weight:800;color:var(--ink);cursor:pointer;margin-top:4px;transition:all .22s;}
+.auth-submit:hover{background:#00e56b;}
+.auth-submit:disabled{opacity:.5;cursor:not-allowed;}
+.auth-error{background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:10px 13px;font-size:12px;color:#DC2626;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:6px;}
+
 /* ── NAV ── */
 .navbar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:420px;background:rgba(255,255,255,.97);backdrop-filter:blur(16px);border-top:1px solid var(--border);display:flex;padding:8px 0 22px;z-index:100;box-shadow:0 -6px 26px rgba(0,0,0,.08);}
 .nav-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;padding:2px 0;transition:all .18s;}
@@ -1096,6 +1117,18 @@ export default function Outfield() {
   const [bookingCount, setBookingCount]       = useState(0);
   const MAX_BOOKINGS = 2;
   const [dbGrounds, setDbGrounds]             = useState([]);
+  const [session, setSession]                 = useState(null);
+  const [authUser, setAuthUser]               = useState(null);
+  const [authMode, setAuthMode]               = useState("login"); // "login" | "signup"
+  const [authName, setAuthName]               = useState("");
+  const [authPhone, setAuthPhone]             = useState("");
+  const [authCity, setAuthCity]               = useState("");
+  const [authRole, setAuthRole]               = useState("player");
+  const [authEmail, setAuthEmail]             = useState("");
+  const [authPassword, setAuthPassword]       = useState("");
+  const [authLoading, setAuthLoading]         = useState(false);
+  const [authError, setAuthError]             = useState("");
+  const [authChecked, setAuthChecked]         = useState(false);
   const [bookRef]                 = useState("OTF-" + Math.random().toString(36).substring(2,6).toUpperCase());
   const fileRef               = useRef(null);
   const [date, setDate]       = useState(DATES[0]);
@@ -1146,6 +1179,26 @@ export default function Outfield() {
     }
   }, []);
 
+  // Check for existing session on load
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session?.user) {
+        supabase.from('users').select('*').eq('id', session.user.id).single()
+          .then(({ data }) => { if (data) setAuthUser(data); });
+      }
+      setAuthChecked(true);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session?.user) {
+        supabase.from('users').select('*').eq('id', session.user.id).single()
+          .then(({ data }) => { if (data) setAuthUser(data); });
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
   useEffect(() => {
     if (screen !== "home") return;
     const t = setInterval(() => setHeroIdx(i => (i+1) % 5), 3600);
@@ -1186,6 +1239,40 @@ export default function Outfield() {
   }, []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2700); };
+
+  const handleSignUp = async () => {
+    if (!authName.trim()) { setAuthError("Please enter your name."); return; }
+    if (!authEmail.trim()) { setAuthError("Please enter your email."); return; }
+    if (authPassword.length < 6) { setAuthError("Password must be at least 6 characters."); return; }
+    setAuthLoading(true); setAuthError("");
+    const { data, error } = await supabase.auth.signUp({ email: authEmail, password: authPassword });
+    if (error) { setAuthError(error.message); setAuthLoading(false); return; }
+    if (data.user) {
+      await supabase.from('users').insert({
+        id: data.user.id,
+        name: authName,
+        phone: authPhone,
+        role: authRole,
+        city: authCity || "Karachi"
+      });
+      setAuthUser({ name: authName, phone: authPhone, role: authRole, city: authCity || "Karachi" });
+    }
+    setAuthLoading(false);
+  };
+
+  const handleLogin = async () => {
+    if (!authEmail.trim() || !authPassword.trim()) { setAuthError("Please enter your email and password."); return; }
+    setAuthLoading(true); setAuthError("");
+    const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
+    if (error) { setAuthError(error.message); setAuthLoading(false); return; }
+    setAuthLoading(false);
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setSession(null); setAuthUser(null);
+    showToast("Logged out successfully");
+  };
 
   const goNav = (n) => {
     setNav(n);
@@ -1251,6 +1338,74 @@ export default function Outfield() {
         </div>
       )}
       <div className="app" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+
+        {/* ═══ AUTH LOADING ═══ */}
+        {!authChecked && (
+          <div style={{minHeight:"100svh",background:"#040608",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <div style={{fontFamily:"Sora,sans-serif",fontSize:40,fontWeight:900,color:"#fff",letterSpacing:"-2px"}}>Out<span style={{color:"#00ff78"}}>field</span></div>
+          </div>
+        )}
+
+        {/* ═══ AUTH SCREEN ═══ */}
+        {authChecked && !session && (
+          <div className="auth-screen">
+            <div className="auth-logo">Out<em>field</em></div>
+            <div className="auth-tagline">Book. Show up. Play.</div>
+            <div className="auth-card">
+              <div className="auth-tabs">
+                <button className={`auth-tab ${authMode==="login"?"on":""}`} onClick={()=>{setAuthMode("login");setAuthError("");}}>Log In</button>
+                <button className={`auth-tab ${authMode==="signup"?"on":""}`} onClick={()=>{setAuthMode("signup");setAuthError("");}}>Sign Up</button>
+              </div>
+
+              {authError && (
+                <div className="auth-error">
+                  <AlertCircle size={13} color="#DC2626" strokeWidth={2}/> {authError}
+                </div>
+              )}
+
+              {authMode === "signup" && (
+                <>
+                  <div className="auth-field">
+                    <label className="auth-label">Full Name *</label>
+                    <input className="auth-input" placeholder="Your name" value={authName} onChange={e=>setAuthName(e.target.value)}/>
+                  </div>
+                  <div className="auth-field">
+                    <label className="auth-label">Phone Number</label>
+                    <input className="auth-input" placeholder="03XX-XXXXXXX" type="tel" value={authPhone} onChange={e=>setAuthPhone(e.target.value)}/>
+                  </div>
+                  <div className="auth-field">
+                    <label className="auth-label">City</label>
+                    <input className="auth-input" placeholder="e.g. Karachi" value={authCity} onChange={e=>setAuthCity(e.target.value)}/>
+                  </div>
+                  <div className="auth-field">
+                    <label className="auth-label">I am a</label>
+                    <div className="auth-role-row">
+                      <div className={`auth-role-btn ${authRole==="player"?"on":""}`} onClick={()=>setAuthRole("player")}>⚽ Player</div>
+                      <div className={`auth-role-btn ${authRole==="owner"?"on":""}`} onClick={()=>setAuthRole("owner")}>🏟️ Ground Owner</div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <div className="auth-field">
+                <label className="auth-label">Email *</label>
+                <input className="auth-input" placeholder="you@email.com" type="email" value={authEmail} onChange={e=>setAuthEmail(e.target.value)}/>
+              </div>
+              <div className="auth-field">
+                <label className="auth-label">Password *</label>
+                <input className="auth-input" placeholder={authMode==="signup"?"At least 6 characters":"Your password"} type="password" value={authPassword} onChange={e=>setAuthPassword(e.target.value)}/>
+              </div>
+
+              <button className="auth-submit" disabled={authLoading}
+                onClick={authMode==="signup" ? handleSignUp : handleLogin}>
+                {authLoading ? "Please wait..." : authMode==="signup" ? "Create Account" : "Log In"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ═══ MAIN APP (only shown when logged in) ═══ */}
+        {authChecked && session && (<>
 
         {/* ═══ RATING MODAL ═══ */}
         {ratingModal && !ratingDone && (
@@ -2759,13 +2914,13 @@ export default function Outfield() {
                   <Check size={11} color="#fff" strokeWidth={3}/>
                 </div>
               </div>
-              <div className="prof-name">Maaz</div>
-              <div className="prof-sub">Karachi · Player since 2025</div>
+              <div className="prof-name">{authUser?.name || "Player"}</div>
+              <div className="prof-sub">{authUser?.city || "Pakistan"} · {authUser?.role === "owner" ? "Ground Owner" : "Player"}</div>
             </div>
             <div style={{height:14}}/>
             <div className="prof-body">
               <div className="stat-row">
-                {[["3","Bookings"],["2","Sports"],["1","Matches"]].map(([n,l])=>(
+                {[["0","Bookings"],["0","Sports"],["0","Matches"]].map(([n,l])=>(
                   <div key={l} className="stat-card">
                     <div className="stat-n">{n}</div>
                     <div className="stat-l">{l}</div>
@@ -2791,6 +2946,17 @@ export default function Outfield() {
                     <div className="prof-row-arr"><ChevronRight size={16} strokeWidth={2}/></div>
                   </div>
                 ))}
+                {/* Sign out button */}
+                <div className="prof-row" style={{marginTop:8}} onClick={handleLogout}>
+                  <div className="prof-row-ico" style={{background:"#FEF2F2"}}>
+                    <ArrowLeft size={17} color="#DC2626" strokeWidth={2}/>
+                  </div>
+                  <div>
+                    <div className="prof-row-t" style={{color:"#DC2626"}}>Sign Out</div>
+                    <div className="prof-row-s">{session?.user?.email}</div>
+                  </div>
+                  <div className="prof-row-arr"><ChevronRight size={16} strokeWidth={2}/></div>
+                </div>
               </div>
             </div>
           </div>
@@ -2817,6 +2983,7 @@ export default function Outfield() {
             })}
           </div>
         )}
+        </>)}
       </div>
     </>
   );
