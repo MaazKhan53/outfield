@@ -642,8 +642,10 @@ input,select,textarea{font-size:16px !important;}
 .section-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
 .section-title{font-family:'Sora',sans-serif;font-size:14px;font-weight:800;color:var(--ink);letter-spacing:-.1px;}
 .section-link{font-size:12px;font-weight:600;color:var(--green);cursor:pointer;display:flex;align-items:center;gap:2px;}
-.hero-scroll{display:flex;gap:12px;overflow-x:auto;scrollbar-width:none;padding-bottom:4px;}
-.hero-scroll::-webkit-scrollbar{display:none;}
+.hero-scroll-wrap{overflow:hidden;width:100%;cursor:pointer;}
+.hero-scroll{display:flex;gap:12px;padding-bottom:4px;width:max-content;animation:heroSlide 22s linear infinite;}
+.hero-scroll:hover{animation-play-state:paused;}
+@keyframes heroSlide{0%{transform:translateX(0);}100%{transform:translateX(-50%);}}
 .hero-card{flex-shrink:0;width:248px;border-radius:var(--r);overflow:hidden;position:relative;cursor:pointer;box-shadow:var(--s2);transition:transform .22s;}
 .hero-card:hover{transform:translateY(-3px) scale(1.01);}
 .hero-card:active{transform:scale(.98);}
@@ -1129,6 +1131,7 @@ export default function Outfield() {
   const [authLoading, setAuthLoading]         = useState(false);
   const [authError, setAuthError]             = useState("");
   const [authChecked, setAuthChecked]         = useState(false);
+  const [authDob, setAuthDob]                 = useState("");
   const [bookRef]                 = useState("OTF-" + Math.random().toString(36).substring(2,6).toUpperCase());
   const fileRef               = useRef(null);
   const [date, setDate]       = useState(DATES[0]);
@@ -1246,10 +1249,23 @@ export default function Outfield() {
     "Gujranwala","Bahawalpur","Sargodha","Sukkur","Larkana"
   ];
 
+  const calcAge = (dob) => {
+    if (!dob) return null;
+    const today = new Date();
+    const birth = new Date(dob);
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+    return age;
+  };
+
   const handleSignUp = async () => {
     if (!authName.trim())   { setAuthError("Full name is required."); return; }
     if (!authPhone.trim())  { setAuthError("Phone number is required."); return; }
     if (!authCity.trim())   { setAuthError("Please select your city."); return; }
+    if (!authDob.trim())    { setAuthError("Date of birth is required."); return; }
+    const age = calcAge(authDob);
+    if (!age || age < 13)   { setAuthError("You must be at least 13 years old."); return; }
     if (!authEmail.trim())  { setAuthError("Email is required."); return; }
     if (authPassword.length < 6) { setAuthError("Password must be at least 6 characters."); return; }
     setAuthLoading(true); setAuthError("");
@@ -1263,7 +1279,7 @@ export default function Outfield() {
         role: authRole,
         city: authCity
       });
-      setAuthUser({ name: authName, phone: authPhone, role: authRole, city: authCity });
+      setAuthUser({ name: authName, phone: authPhone, role: authRole, city: authCity, dob: authDob, age });
     }
     setAuthLoading(false);
   };
@@ -1412,6 +1428,24 @@ export default function Outfield() {
                       <option value="">Select your city</option>
                       {PAKISTAN_CITIES.map(c=><option key={c} value={c}>{c}</option>)}
                     </select>
+                  </div>
+                  <div className="auth-field">
+                    <label className="auth-label">Date of Birth <span style={{color:"#DC2626"}}>*</span></label>
+                    <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                      <input className="auth-input" type="date" value={authDob}
+                        max={new Date().toISOString().split('T')[0]}
+                        onChange={e=>setAuthDob(e.target.value)}
+                        style={{flex:1}}/>
+                      {authDob && calcAge(authDob) !== null && (
+                        <div style={{
+                          background:"var(--green-l)",border:"1px solid var(--green)",
+                          borderRadius:10,padding:"10px 14px",fontSize:13,fontWeight:800,
+                          color:"var(--green-d)",whiteSpace:"nowrap",flexShrink:0
+                        }}>
+                          {calcAge(authDob)} yrs
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div className="auth-field">
                     <label className="auth-label">I am a</label>
@@ -1689,36 +1723,31 @@ export default function Outfield() {
                   See all <ChevronRight size={13} strokeWidth={2.5}/>
                 </div>
               </div>
-              <div className="hero-scroll">
-                {featGrounds.map((g,i) => {
-                  const hasLfp = getSlots(g,"Mar 10").some(s=>s.lfp);
-                  return (
-                    <div key={g.id} className="hero-card" onClick={()=>openGround(g)}>
-                      <img className="hero-card-img" src={gImg(g)} alt={g.name}
-                        onError={e=>{e.target.style.display="none";}}/>
-                      <div className="hero-grad"/>
-                      <div className="hero-top-row">
-                        <div className="hero-rating-pill">
-                          <Star size={9} color="var(--amber)" fill="var(--amber)"/> {g.rating}
+              <div className="hero-scroll-wrap">
+                <div className="hero-scroll">
+                  {[...featGrounds, ...featGrounds].map((g,i) => {
+                    return (
+                      <div key={i} className="hero-card" onClick={()=>openGround(g)}>
+                        <img className="hero-card-img" src={gImg(g)} alt={g.name}
+                          onError={e=>{e.target.style.display="none";}}/>
+                        <div className="hero-grad"/>
+                        <div className="hero-top-row">
+                          <div className="hero-rating-pill">
+                            <Star size={9} color="var(--amber)" fill="var(--amber)"/> {g.rating}
+                          </div>
+                          <div className="hero-price-pill">Rs {g.priceFrom.toLocaleString()}</div>
                         </div>
-                        <div className="hero-price-pill">Rs {g.priceFrom.toLocaleString()}</div>
-                      </div>
-                      {hasLfp && <div className="hero-lfp-pill">Need Players</div>}
-                      <div className="hero-bottom">
-                        <div className="hero-name">{g.name}</div>
-                        <div className="hero-meta">
-                          <div className="hero-meta-item"><MapPin size={9} strokeWidth={2}/>{g.area}</div>
-                          <div className="hero-meta-item"><Navigation size={9} strokeWidth={2}/>{g.distance}</div>
+                        <div className="hero-bottom">
+                          <div className="hero-name">{g.name}</div>
+                          <div className="hero-meta">
+                            <div className="hero-meta-item"><MapPin size={9} strokeWidth={2}/>{g.area}</div>
+                            <div className="hero-meta-item"><Navigation size={9} strokeWidth={2}/>{g.distance}</div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="hero-dots">
-                {featGrounds.map((_,i)=>(
-                  <div key={i} className={`hero-dot ${heroIdx===i?"on":""}`} onClick={()=>setHeroIdx(i)}/>
-                ))}
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
@@ -2866,9 +2895,47 @@ export default function Outfield() {
                         showToast("Each ground needs a name, sport, and base price.");
                         return;
                       }
-                      showToast("Submitted! Live within 24 hours.");
-                      setScreen("home");
-                      setNav("home");
+                      // Save to Supabase
+                      (async () => {
+                        const { data: ground, error: gErr } = await supabase
+                          .from('grounds')
+                          .insert({
+                            owner_id:     session?.user?.id || null,
+                            name:         ownerFacilityName,
+                            area:         "",
+                            city:         authUser?.city || "Karachi",
+                            description:  "",
+                            open_from:    ownerBreaks[0]?.from || "06:00",
+                            open_till:    "23:00",
+                            amenities:    ownerAmenities.join(','),
+                            contact_phone: ownerPhone,
+                            img_url:      null,
+                            rating:       0,
+                            status:       "pending"
+                          })
+                          .select()
+                          .single();
+                        if (!gErr && ground) {
+                          // Insert each court
+                          const courtRows = ownerCourts.map(c => ({
+                            ground_id:          ground.id,
+                            name:               c.name,
+                            sports:             c.sports.join(','),
+                            surface_type:       c.type,
+                            capacity:           parseInt(c.capacity) || null,
+                            price_base:         parseInt(c.priceBase) || null,
+                            price_peak:         parseInt(c.pricePeak) || null,
+                            slot_duration_mins: c.slotDur === "1 hr" ? 60 : c.slotDur === "1.5 hr" ? 90 : c.slotDur === "3 hr" ? 180 : 120,
+                            notes:              c.notes
+                          }));
+                          await supabase.from('courts').insert(courtRows);
+                          showToast("Submitted! We'll review and go live within 24 hours.");
+                        } else {
+                          showToast("Submission failed. Please try again.");
+                        }
+                        setScreen("home");
+                        setNav("home");
+                      })();
                     }}>
                     Submit Facility for Review
                   </button>
