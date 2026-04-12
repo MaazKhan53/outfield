@@ -1119,6 +1119,7 @@ export default function Outfield() {
   const [bookingCount, setBookingCount]       = useState(0);
   const MAX_BOOKINGS = 2;
   const [dbGrounds, setDbGrounds]             = useState([]);
+  const [bookedSlotKeys, setBookedSlotKeys]   = useState(new Set());
   const [session, setSession]                 = useState(null);
   const [authUser, setAuthUser]               = useState(null);
   const [authMode, setAuthMode]               = useState("login"); // "login" | "signup"
@@ -1269,8 +1270,20 @@ export default function Outfield() {
     if (!authEmail.trim())  { setAuthError("Email is required."); return; }
     if (authPassword.length < 6) { setAuthError("Password must be at least 6 characters."); return; }
     setAuthLoading(true); setAuthError("");
+    // Check phone uniqueness before creating auth user
+    const { data: existing } = await supabase
+      .from('users').select('id').eq('phone', authPhone).maybeSingle();
+    if (existing) { setAuthError("This phone number is already registered."); setAuthLoading(false); return; }
     const { data, error } = await supabase.auth.signUp({ email: authEmail, password: authPassword });
-    if (error) { setAuthError(error.message); setAuthLoading(false); return; }
+    if (error) {
+      const msg = error.message.toLowerCase();
+      if (msg.includes('already registered') || msg.includes('already exists') || msg.includes('unique')) {
+        setAuthError("This email is already registered. Please log in.");
+      } else {
+        setAuthError(error.message);
+      }
+      setAuthLoading(false); return;
+    }
     if (data.user) {
       await supabase.from('users').insert({
         id: data.user.id,
@@ -1288,7 +1301,15 @@ export default function Outfield() {
     if (!authEmail.trim() || !authPassword.trim()) { setAuthError("Please enter your email and password."); return; }
     setAuthLoading(true); setAuthError("");
     const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword });
-    if (error) { setAuthError(error.message); setAuthLoading(false); return; }
+    if (error) {
+      const msg = error.message.toLowerCase();
+      if (msg.includes('invalid') || msg.includes('credentials') || msg.includes('password')) {
+        setAuthError("Incorrect email or password. Please try again.");
+      } else {
+        setAuthError(error.message);
+      }
+      setAuthLoading(false); return;
+    }
     setAuthLoading(false);
   };
 
@@ -1301,13 +1322,13 @@ export default function Outfield() {
   const handleConfirmBooking = async () => {
     if (!curSlot || !ground) return;
     setBookingCount(p => p + 1);
-    // Save to Supabase if we have a real court ID (uuid format)
     if (session?.user && ground.id && typeof ground.id === 'string' && ground.id.includes('-')) {
       const ref = "OTF-" + Math.random().toString(36).substring(2,6).toUpperCase();
       const timeFrom = curSlot.time?.split("–")[0] || "00:00";
       const timeTo   = curSlot.time?.split("–")[1] || "02:00";
+      const courtId  = court?.id || null;
       await supabase.from('bookings').insert({
-        court_id:       court?.id || null,
+        court_id:       courtId,
         player_id:      session.user.id,
         booking_date:   date,
         start_time:     timeFrom,
@@ -1319,6 +1340,9 @@ export default function Outfield() {
         booking_ref:    ref,
         lfp_on:         lfp
       });
+      // Mark slot as booked locally so UI updates immediately
+      const key = `${courtId}_${date}_${timeFrom}`;
+      setBookedSlotKeys(prev => new Set([...prev, key]));
     }
     setScreen("success");
   };
@@ -1360,7 +1384,22 @@ export default function Outfield() {
     )
   );
 
-  const openGround = (g) => { setGround(g); setCourt(null); setSlot(null); setLfp(false); setScreen("detail"); };
+  const openGround = (g) => {
+    setGround(g); setCourt(null); setSlot(null); setLfp(false); setScreen("detail");
+    // Fetch already booked slots for this ground's courts
+    if (g.id && typeof g.id === 'string' && g.id.includes('-')) {
+      supabase
+        .from('bookings')
+        .select('court_id, booking_date, start_time')
+        .eq('status', 'confirmed')
+        .then(({ data }) => {
+          if (data) {
+            const keys = new Set(data.map(b => `${b.court_id}_${b.booking_date}_${b.start_time}`));
+            setBookedSlotKeys(keys);
+          }
+        });
+    }
+  };
   const activeCourt = ground?.isFacility ? court : null;
   const getSlots = (g, d) => {
     if (g?.isFacility && court) {
