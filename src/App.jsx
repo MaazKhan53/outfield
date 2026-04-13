@@ -1072,6 +1072,65 @@ input,select,textarea{font-size:16px !important;}
 
 .fade{animation:fadeup .22s ease;}
 @keyframes fadeup{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+
+/* ── OWNER DASHBOARD ── */
+.odash-head{background:var(--ink);padding:52px 18px 24px;position:relative;overflow:hidden;}
+.odash-head-glow{position:absolute;inset:0;background:radial-gradient(ellipse 70% 60% at 50% 30%,rgba(249,115,22,.12) 0%,transparent 70%);pointer-events:none;}
+.odash-greeting{font-size:11px;color:rgba(255,255,255,.4);font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px;}
+.odash-title{font-family:'Sora',sans-serif;font-size:22px;font-weight:900;color:#fff;letter-spacing:-.3px;}
+.odash-title em{color:#FB923C;font-style:normal;}
+.odash-sub{font-size:12px;color:rgba(255,255,255,.35);margin-top:4px;}
+.odash-stats{display:flex;gap:8px;margin-top:18px;}
+.odash-stat{flex:1;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:12px 10px;text-align:center;}
+.odash-stat-n{font-family:'Sora',sans-serif;font-size:20px;font-weight:900;color:#fff;}
+.odash-stat-l{font-size:9px;color:rgba(255,255,255,.35);margin-top:2px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;}
+.odash-tabs{display:flex;gap:8px;padding:16px 18px 0;}
+.odash-tab{flex:1;padding:10px;border-radius:12px;border:1.5px solid var(--border);background:#fff;font-size:12px;font-weight:700;color:var(--ink4);cursor:pointer;font-family:'Inter',sans-serif;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:6px;}
+.odash-tab.on{background:var(--ink);border-color:var(--ink);color:#fff;}
+.odash-body{padding:16px 18px;display:flex;flex-direction:column;gap:12px;}
+.odash-ground-card{background:#fff;border-radius:var(--r2);border:1px solid rgba(0,0,0,.05);box-shadow:var(--s1);overflow:hidden;}
+.odash-ground-img{width:100%;height:120px;object-fit:cover;background:var(--border2);}
+.odash-ground-img-placeholder{width:100%;height:120px;background:linear-gradient(135deg,var(--ink),#2D3448);display:flex;align-items:center;justify-content:center;}
+.odash-ground-body{padding:13px 15px;}
+.odash-ground-name{font-family:'Sora',sans-serif;font-size:14px;font-weight:800;color:var(--ink);}
+.odash-ground-area{font-size:11px;color:var(--ink4);margin-top:2px;display:flex;align-items:center;gap:4px;}
+.odash-ground-footer{display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding-top:10px;border-top:1px solid var(--border2);}
+.odash-ground-status{font-size:10px;font-weight:700;border-radius:100px;padding:3px 10px;}
+.odash-ground-status.live{background:#DCFCE7;color:#15803D;}
+.odash-ground-status.pending{background:#FEF3C7;color:#D97706;}
+.odash-ground-status.review{background:#DBEAFE;color:#1D4ED8;}
+.odash-booking-card{background:#fff;border-radius:var(--r2);border:1px solid rgba(0,0,0,.05);box-shadow:var(--s1);padding:14px 16px;display:flex;flex-direction:column;gap:8px;}
+.odash-booking-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;}
+.odash-booking-ground{font-family:'Sora',sans-serif;font-size:13px;font-weight:800;color:var(--ink);}
+.odash-booking-court{font-size:10px;color:var(--ink4);margin-top:1px;}
+.odash-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:44px 20px;color:var(--ink4);}
+.odash-empty-ico{width:52px;height:52px;border-radius:16px;background:var(--border2);display:flex;align-items:center;justify-content:center;}
+.odash-empty-t{font-size:13px;font-weight:700;color:var(--ink2);}
+.odash-empty-s{font-size:11px;color:var(--ink4);text-align:center;line-height:1.5;}
+
+/* ── BOOKING HISTORY ── */
+.bh-head{background:var(--ink);padding:52px 18px 18px;display:flex;align-items:center;gap:13px;}
+.bh-back{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;}
+.bh-title{font-family:'Sora',sans-serif;font-size:18px;font-weight:900;color:#fff;}
+.bh-body{padding:16px 18px;display:flex;flex-direction:column;gap:12px;}
+.bh-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:60px 20px;color:var(--ink4);}
+.bh-empty-ico{width:56px;height:56px;border-radius:18px;background:var(--border2);display:flex;align-items:center;justify-content:center;}
+.bh-empty-t{font-size:14px;font-weight:700;color:var(--ink2);}
+.bh-empty-s{font-size:12px;color:var(--ink4);text-align:center;line-height:1.5;}
+.bh-card{background:#fff;border-radius:var(--r2);border:1px solid rgba(0,0,0,.05);box-shadow:var(--s1);padding:14px 16px;display:flex;flex-direction:column;gap:8px;}
+.bh-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;}
+.bh-ground{font-family:'Sora',sans-serif;font-size:14px;font-weight:800;color:var(--ink);flex:1;}
+.bh-status{font-size:10px;font-weight:700;border-radius:100px;padding:3px 10px;flex-shrink:0;}
+.bh-status.confirmed{background:#DCFCE7;color:#15803D;}
+.bh-status.pending{background:#FEF3C7;color:#D97706;}
+.bh-status.cancelled{background:#FEE2E2;color:#DC2626;}
+.bh-meta{display:flex;gap:14px;flex-wrap:wrap;}
+.bh-meta-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--ink3);font-weight:500;}
+.bh-divider{height:1px;background:var(--border2);}
+.bh-bottom{display:flex;align-items:center;justify-content:space-between;}
+.bh-ref{font-size:10px;color:var(--ink4);font-weight:600;font-family:'Sora',sans-serif;}
+.bh-price{font-family:'Sora',sans-serif;font-size:16px;font-weight:900;color:var(--green-d);}
+.bh-loading{display:flex;align-items:center;justify-content:center;padding:40px;color:var(--ink4);font-size:13px;gap:8px;}
 `;
 
 /* ─── ICON HELPERS ─── */
@@ -1117,6 +1176,12 @@ export default function Outfield() {
   const [timeFilterTo, setTimeFilterTo]       = useState("");
   const [playerCount, setPlayerCount]         = useState(1);
   const [bookingCount, setBookingCount]       = useState(0);
+  const [bookingHistory, setBookingHistory]   = useState([]);
+  const [bookingHistoryLoading, setBookingHistoryLoading] = useState(false);
+  const [ownerGrounds, setOwnerGrounds]       = useState([]);
+  const [ownerBookings, setOwnerBookings]     = useState([]);
+  const [ownerDashLoading, setOwnerDashLoading] = useState(false);
+  const [ownerDashTab, setOwnerDashTab]       = useState("grounds");
   const MAX_BOOKINGS = 2;
   const [dbGrounds, setDbGrounds]             = useState([]);
   const [bookedSlotKeys, setBookedSlotKeys]   = useState(new Set());
@@ -1241,6 +1306,57 @@ export default function Outfield() {
         }
       });
   }, []);
+
+  // Fetch owner dashboard data when owner is on home screen
+  useEffect(() => {
+    if (screen !== "home" || authUser?.role !== "owner" || !session?.user) return;
+    setOwnerDashLoading(true);
+    supabase
+      .from('grounds')
+      .select('*')
+      .eq('owner_id', session.user.id)
+      .then(async ({ data: grounds }) => {
+        const gList = grounds || [];
+        setOwnerGrounds(gList);
+        if (gList.length > 0) {
+          const groundIds = gList.map(g => g.id);
+          // Fetch courts belonging to owner's grounds
+          const { data: courtRows } = await supabase
+            .from('courts')
+            .select('id, name, ground_id')
+            .in('ground_id', groundIds);
+          const courtIds = (courtRows || []).map(c => c.id);
+          if (courtIds.length > 0) {
+            const { data: bkgs } = await supabase
+              .from('bookings')
+              .select('*, courts(name, ground_id)')
+              .in('court_id', courtIds)
+              .order('created_at', { ascending: false });
+            setOwnerBookings(bkgs || []);
+          } else {
+            setOwnerBookings([]);
+          }
+        } else {
+          setOwnerBookings([]);
+        }
+        setOwnerDashLoading(false);
+      });
+  }, [screen, authUser, session]);
+
+  // Fetch booking history when profile or bookingHistory screen is active
+  useEffect(() => {
+    if (!["profile","bookingHistory"].includes(screen) || !session?.user) return;
+    setBookingHistoryLoading(true);
+    supabase
+      .from('bookings')
+      .select('*, courts(name, grounds(name))')
+      .eq('player_id', session.user.id)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        if (data) setBookingHistory(data);
+        setBookingHistoryLoading(false);
+      });
+  }, [screen, session]);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2700); };
 
@@ -1713,8 +1829,121 @@ export default function Outfield() {
           </div>
         )}
 
+        {/* ═══ OWNER DASHBOARD ═══ */}
+        {screen === "home" && authUser?.role === "owner" && (
+          <div className="screen active fade" style={{background:"var(--bg)",overflowY:"auto",paddingBottom:88,minHeight:"100svh"}}>
+            {/* Header */}
+            <div className="odash-head">
+              <div className="odash-head-glow"/>
+              <div className="odash-greeting">Owner Portal</div>
+              <div className="odash-title">Your <em>Grounds</em></div>
+              <div className="odash-sub">{authUser?.name || "Owner"} · {authUser?.city || "Pakistan"}</div>
+              <div className="odash-stats">
+                <div className="odash-stat">
+                  <div className="odash-stat-n">{ownerGrounds.length}</div>
+                  <div className="odash-stat-l">Grounds</div>
+                </div>
+                <div className="odash-stat">
+                  <div className="odash-stat-n">{ownerBookings.length}</div>
+                  <div className="odash-stat-l">Bookings</div>
+                </div>
+                <div className="odash-stat">
+                  <div className="odash-stat-n">
+                    Rs {ownerBookings.reduce((s,b)=>s+(b.total_price||0),0).toLocaleString()}
+                  </div>
+                  <div className="odash-stat-l">Revenue</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Tabs */}
+            <div className="odash-tabs">
+              <button className={`odash-tab ${ownerDashTab==="grounds"?"on":""}`} onClick={()=>setOwnerDashTab("grounds")}>
+                <MapPin size={13} strokeWidth={2}/> My Grounds
+              </button>
+              <button className={`odash-tab ${ownerDashTab==="bookings"?"on":""}`} onClick={()=>setOwnerDashTab("bookings")}>
+                <Calendar size={13} strokeWidth={2}/> Bookings Received
+              </button>
+            </div>
+
+            <div className="odash-body">
+              {ownerDashLoading ? (
+                <div className="bh-loading">
+                  <RefreshCw size={16} color="var(--ink4)" strokeWidth={2}/>
+                  Loading…
+                </div>
+              ) : ownerDashTab === "grounds" ? (
+                ownerGrounds.length === 0 ? (
+                  <div className="odash-empty">
+                    <div className="odash-empty-ico">
+                      <MapPin size={22} color="var(--ink4)" strokeWidth={1.5}/>
+                    </div>
+                    <div className="odash-empty-t">No grounds listed yet</div>
+                    <div className="odash-empty-s">Use the Owner Portal to list your ground and start receiving bookings.</div>
+                    <button style={{marginTop:8,background:"var(--ink)",color:"#fff",border:"none",borderRadius:12,padding:"10px 22px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"Inter,sans-serif"}}
+                      onClick={()=>setScreen("owner")}>
+                      List a Ground
+                    </button>
+                  </div>
+                ) : ownerGrounds.map(g => (
+                  <div key={g.id} className="odash-ground-card">
+                    {g.img_url
+                      ? <img className="odash-ground-img" src={g.img_url} alt={g.name} onError={e=>{e.target.style.display="none";}}/>
+                      : <div className="odash-ground-img-placeholder"><MapPin size={28} color="rgba(255,255,255,.2)" strokeWidth={1.5}/></div>
+                    }
+                    <div className="odash-ground-body">
+                      <div className="odash-ground-name">{g.name}</div>
+                      <div className="odash-ground-area">
+                        <MapPin size={10} strokeWidth={2}/>{g.area}{g.city ? ` · ${g.city}` : ""}
+                      </div>
+                      <div className="odash-ground-footer">
+                        <div className={`odash-ground-status ${g.status || "pending"}`}>
+                          {g.status || "pending"}
+                        </div>
+                        <div style={{fontSize:11,color:"var(--ink4)",fontWeight:600}}>
+                          {g.open_from || "—"} – {g.open_till || "—"}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                /* Bookings tab */
+                ownerBookings.length === 0 ? (
+                  <div className="odash-empty">
+                    <div className="odash-empty-ico">
+                      <Calendar size={22} color="var(--ink4)" strokeWidth={1.5}/>
+                    </div>
+                    <div className="odash-empty-t">No bookings received yet</div>
+                    <div className="odash-empty-s">Bookings from players will appear here once your ground goes live.</div>
+                  </div>
+                ) : ownerBookings.map((b, i) => {
+                  const statusCls = b.status === "confirmed" ? "confirmed" : b.status === "cancelled" ? "cancelled" : "pending";
+                  const courtLabel = b.courts?.name || null;
+                  return (
+                    <div key={b.id || i} className="odash-booking-card">
+                      <div className="odash-booking-top">
+                        <div>
+                          <div className="odash-booking-ground">{courtLabel || "Ground Booking"}</div>
+                          {b.booking_date && <div className="odash-booking-court">{b.booking_date} · {b.start_time} – {b.end_time}</div>}
+                        </div>
+                        <div className={`bh-status ${statusCls}`}>{b.status || "confirmed"}</div>
+                      </div>
+                      <div className="bh-divider"/>
+                      <div className="bh-bottom">
+                        <div className="bh-ref">{b.booking_ref || "—"}</div>
+                        <div className="bh-price">Rs {(b.total_price || 0).toLocaleString()}</div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+
         {/* ═══ HOME ═══ */}
-        {screen === "home" && (
+        {screen === "home" && !authUser?.role?.includes("owner") && (
           <div className="screen active home fade">
             <div className="home-head">
               <div className="home-head-blob"/><div className="home-head-blob2"/>
@@ -3046,6 +3275,61 @@ export default function Outfield() {
           </div>
         )}
 
+        {/* ═══ BOOKING HISTORY ═══ */}
+        {screen === "bookingHistory" && (
+          <div className="screen active fade" style={{background:"var(--bg)",overflowY:"auto",paddingBottom:88,minHeight:"100svh"}}>
+            <div className="bh-head">
+              <div className="bh-back" onClick={()=>setScreen("profile")}>
+                <ArrowLeft size={18} color="#fff" strokeWidth={2.5}/>
+              </div>
+              <div className="bh-title">My Bookings</div>
+            </div>
+            <div className="bh-body">
+              {bookingHistoryLoading ? (
+                <div className="bh-loading">
+                  <RefreshCw size={16} color="var(--ink4)" strokeWidth={2}/>
+                  Loading bookings…
+                </div>
+              ) : bookingHistory.length === 0 ? (
+                <div className="bh-empty">
+                  <div className="bh-empty-ico">
+                    <Calendar size={24} color="var(--ink4)" strokeWidth={1.5}/>
+                  </div>
+                  <div className="bh-empty-t">No bookings yet</div>
+                  <div className="bh-empty-s">Your confirmed bookings will appear here once you book a ground.</div>
+                </div>
+              ) : bookingHistory.map((b, i) => {
+                const groundName = b.courts?.grounds?.name || b.courts?.name || "Ground";
+                const courtName  = b.courts?.name || null;
+                const statusCls  = b.status === "confirmed" ? "confirmed" : b.status === "cancelled" ? "cancelled" : "pending";
+                return (
+                  <div key={b.id || i} className="bh-card">
+                    <div className="bh-card-top">
+                      <div className="bh-ground">{groundName}{courtName && courtName !== groundName ? ` · ${courtName}` : ""}</div>
+                      <div className={`bh-status ${statusCls}`}>{b.status || "confirmed"}</div>
+                    </div>
+                    <div className="bh-meta">
+                      <div className="bh-meta-item">
+                        <Calendar size={11} strokeWidth={2.5}/>
+                        {b.booking_date}
+                      </div>
+                      <div className="bh-meta-item">
+                        <Clock size={11} strokeWidth={2.5}/>
+                        {b.start_time} – {b.end_time}
+                      </div>
+                    </div>
+                    <div className="bh-divider"/>
+                    <div className="bh-bottom">
+                      <div className="bh-ref">{b.booking_ref || "—"}</div>
+                      <div className="bh-price">Rs {(b.total_price || 0).toLocaleString()}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* ═══ PROFILE ═══ */}
         {screen === "profile" && (
           <div className="screen active profile fade">
@@ -3065,7 +3349,7 @@ export default function Outfield() {
             <div style={{height:14}}/>
             <div className="prof-body">
               <div className="stat-row">
-                {[["0","Bookings"],["0","Sports"],["0","Matches"]].map(([n,l])=>(
+                {[[String(bookingHistory.length),"Bookings"],["0","Sports"],["0","Matches"]].map(([n,l])=>(
                   <div key={l} className="stat-card">
                     <div className="stat-n">{n}</div>
                     <div className="stat-l">{l}</div>
@@ -3074,13 +3358,13 @@ export default function Outfield() {
               </div>
               <div className="prof-list">
                 {[
-                  {I:Calendar, bg:"#DBEAFE", c:"#2563EB", t:"My Bookings",         s:"Upcoming & past"},
-                  {I:UserPlus, bg:"#FEF3C7", c:"#D97706", t:"Matchmaking History", s:"Games joined or hosted"},
-                  {I:Heart,    bg:"#FCE7F3", c:"#DB2777", t:"Favourite Grounds",   s:"Your saved venues"},
-                  {I:Bell,     bg:"#DCFCE7", c:"#16A34A", t:"Notifications",       s:"Booking alerts & requests"},
-                  {I:SlidersHorizontal, bg:"#F3F4F6", c:"#4B5563", t:"Settings",   s:"Account & preferences"},
+                  {I:Calendar, bg:"#DBEAFE", c:"#2563EB", t:"My Bookings",         s:"Upcoming & past",        action:()=>setScreen("bookingHistory")},
+                  {I:UserPlus, bg:"#FEF3C7", c:"#D97706", t:"Matchmaking History", s:"Games joined or hosted", action:null},
+                  {I:Heart,    bg:"#FCE7F3", c:"#DB2777", t:"Favourite Grounds",   s:"Your saved venues",      action:null},
+                  {I:Bell,     bg:"#DCFCE7", c:"#16A34A", t:"Notifications",       s:"Booking alerts & requests", action:null},
+                  {I:SlidersHorizontal, bg:"#F3F4F6", c:"#4B5563", t:"Settings",   s:"Account & preferences",  action:null},
                 ].map((r,i)=>(
-                  <div key={i} className="prof-row">
+                  <div key={i} className="prof-row" onClick={r.action || undefined}>
                     <div className="prof-row-ico" style={{background:r.bg}}>
                       <r.I size={17} color={r.c} strokeWidth={2}/>
                     </div>
