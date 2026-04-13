@@ -1261,6 +1261,10 @@ input,select,textarea{font-size:16px !important;}
 .app.dark .slot-dur-opt.on{background:#1E293B !important;color:#F1F5F9 !important;}
 .app.dark .break-row{background:#1E293B !important;border-color:#334155 !important;}
 .app.dark .book-btn{background:#16A34A !important;color:#fff !important;}
+@keyframes slideFromRight{from{transform:translateX(100%);}to{transform:translateX(0);}}
+@keyframes slideFromLeft{from{transform:translateX(-100%);}to{transform:translateX(0);}}
+.slide-from-right{animation:slideFromRight 0.28s cubic-bezier(0.25,0.46,0.45,0.94) forwards;}
+.slide-from-left{animation:slideFromLeft 0.28s cubic-bezier(0.25,0.46,0.45,0.94) forwards;}
 
 /* dark mode toggle row */
 .dm-section{background:var(--card);border-radius:var(--r2);border:1px solid var(--border2);overflow:hidden;margin-bottom:12px;}
@@ -1446,6 +1450,7 @@ function MapScreen({ grounds, darkMode, onBookGround }) {
 export default function Outfield() {
   const [screen, setScreen]   = useState("splash");
   const [nav, setNav]         = useState("home");
+  const [slideDirection, setSlideDirection] = useState('right');
   const [sport, setSport]     = useState("all");
   const [search, setSearch]   = useState("");
   const [ground, setGround]   = useState(null);
@@ -1540,8 +1545,10 @@ export default function Outfield() {
     if(Math.abs(dx) > 110 && Math.abs(dx) > Math.abs(dy) * 3.5) {
       const idx = TAB_ORDER.indexOf(nav);
       if(dx < 0 && idx < TAB_ORDER.length - 1) {
+        setSlideDirection('right');
         goNav(TAB_ORDER[idx + 1]);
       } else if(dx > 0 && idx > 0) {
+        setSlideDirection('left');
         goNav(TAB_ORDER[idx - 1]);
       }
     }
@@ -1835,6 +1842,9 @@ export default function Outfield() {
   };
 
   const goNav = (n) => {
+    const currentIdx = TAB_ORDER.indexOf(nav);
+    const nextIdx = TAB_ORDER.indexOf(n);
+    setSlideDirection(nextIdx > currentIdx ? 'right' : 'left');
     setNav(n);
     setScreen({home:"home",explore:"explore",map:"map",match:"match",profile:"profile"}[n]);
   };
@@ -2341,7 +2351,7 @@ export default function Outfield() {
 
         {/* ═══ HOME ═══ */}
         {screen === "home" && !authUser?.role?.includes("owner") && (
-          <div className="screen active home fade">
+          <div className={`screen active home ${slideDirection === 'right' ? 'slide-from-right' : 'slide-from-left'}`}>
             <div className="home-head">
               <div className="home-head-blob"/><div className="home-head-blob2"/>
               <div className="hrow">
@@ -2906,7 +2916,7 @@ export default function Outfield() {
 
         {/* ═══ MAP ═══ */}
         {screen === "map" && (
-          <div className="map-screen">
+          <div className={`map-screen ${slideDirection === 'right' ? 'slide-from-right' : 'slide-from-left'}`}>
             <MapScreen
               grounds={dbGrounds.length > 0 ? dbGrounds : GROUNDS}
               darkMode={darkMode}
@@ -2917,7 +2927,7 @@ export default function Outfield() {
 
         {/* ═══ MATCHMAKING ═══ */}
         {screen === "match" && (
-          <div className="screen active match fade">
+          <div className={`screen active match ${slideDirection === 'right' ? 'slide-from-right' : 'slide-from-left'}`}>
             <div className="match-head">
               <div className="match-glow"/>
               <div className="match-title" style={{display:"flex",alignItems:"center",gap:9}}>
@@ -3087,7 +3097,7 @@ export default function Outfield() {
 
         {/* ═══ EXPLORE ═══ */}
         {screen === "explore" && (
-          <div className="screen active explore fade">
+          <div className={`screen active explore ${slideDirection === 'right' ? 'slide-from-right' : 'slide-from-left'}`}>
             <div className="exp-head">
               <div className="exp-title" style={{display:"flex",alignItems:"center",gap:9}}>
                 <div style={{width:34,height:34,borderRadius:10,background:"rgba(255,255,255,.08)",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -3817,7 +3827,7 @@ export default function Outfield() {
 
         {/* ═══ PROFILE ═══ */}
         {screen === "profile" && (
-          <div className="screen active profile fade">
+          <div className={`screen active profile ${slideDirection === 'right' ? 'slide-from-right' : 'slide-from-left'}`}>
             <div className="prof-head">
               <div className="prof-glow"/>
               <button className="prof-edit-btn"
