@@ -1229,6 +1229,38 @@ input,select,textarea{font-size:16px !important;}
 .app.dark .search-input{background:transparent !important;color:#F1F5F9 !important;}
 .app.dark .search-input::placeholder{color:#64748B !important;}
 .app.dark .search-box svg{color:#64748B !important;}
+.app.dark .match-head::after{background:#0A0E1A !important;}
+.app.dark .exp-head::after{background:#0A0E1A !important;}
+.app.dark .home-head::after{background:#0A0E1A !important;}
+.app.dark .prof-head::after{background:#0A0E1A !important;}
+.app.dark .tc{background:#111827 !important;border-color:#1E293B !important;}
+.app.dark .tc-team{color:#F1F5F9 !important;}
+.app.dark .tc-body{background:#111827 !important;}
+.app.dark .tc-top{color:#F1F5F9 !important;}
+.app.dark .tc-detail-row{color:#94A3B8 !important;}
+.app.dark .tc-banner{opacity:0.5 !important;}
+.app.dark .tc-captain-name{color:#F1F5F9 !important;}
+.app.dark .tc-phone{color:#94A3B8 !important;}
+.app.dark .match-tab-row{background:#111827 !important;border-color:#1E293B !important;}
+.app.dark .match-tab{color:#94A3B8 !important;}
+.app.dark .match-tab.on{background:#1E293B !important;color:#F1F5F9 !important;}
+.app.dark .owner-screen{background:#0A0E1A !important;}
+.app.dark .owner-head{background:#060B12 !important;}
+.app.dark .owner-head *{color:#F1F5F9 !important;}
+.app.dark .form-block{background:#111827 !important;border-color:#1E293B !important;}
+.app.dark .form-block-t{color:#F1F5F9 !important;}
+.app.dark .finput{background:#1E293B !important;color:#F1F5F9 !important;border-color:#334155 !important;}
+.app.dark .finput::placeholder{color:#64748B !important;}
+.app.dark .flbl{color:#94A3B8 !important;}
+.app.dark .owner-section-btn{background:#111827 !important;border-color:#1E293B !important;color:#94A3B8 !important;}
+.app.dark .owner-section-btn.on{background:#1E293B !important;color:#F1F5F9 !important;}
+.app.dark .court-pick-card{background:#111827 !important;border-color:#1E293B !important;}
+.app.dark .court-pick-name{color:#F1F5F9 !important;}
+.app.dark .info-note{background:#1E293B !important;border-color:#334155 !important;color:#CBD5E1 !important;}
+.app.dark .slot-dur-opt{background:#111827 !important;border-color:#1E293B !important;color:#94A3B8 !important;}
+.app.dark .slot-dur-opt.on{background:#1E293B !important;color:#F1F5F9 !important;}
+.app.dark .break-row{background:#1E293B !important;border-color:#334155 !important;}
+.app.dark .book-btn{background:#16A34A !important;color:#fff !important;}
 
 /* dark mode toggle row */
 .dm-section{background:var(--card);border-radius:var(--r2);border:1px solid var(--border2);overflow:hidden;margin-bottom:12px;}
