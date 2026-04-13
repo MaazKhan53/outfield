@@ -1,3 +1,18 @@
+/*
+ADMIN: TO APPROVE A GROUND LISTING:
+1. Go to Supabase Dashboard → Table Editor → grounds table
+2. Find the ground with status = 'pending'
+3. Review the name, area, contact_phone submitted by the owner
+4. Click the row → edit → change status from 'pending' to 'live'
+5. Click Save — the ground immediately appears on the app for all players
+To REJECT: change status to 'rejected' or simply delete the row
+
+SQL TO RUN ONCE IN SUPABASE SQL EDITOR:
+ALTER TABLE courts ADD COLUMN IF NOT EXISTS pricing_type text DEFAULT 'fixed';
+CREATE TABLE IF NOT EXISTS announcements (id uuid default gen_random_uuid() primary key, ground_id uuid, owner_id uuid, message text, created_at timestamptz default now());
+CREATE TABLE IF NOT EXISTS blocked_slots (id uuid default gen_random_uuid() primary key, court_id uuid, ground_id uuid, date text, start_time text, end_time text, reason text, owner_id uuid, created_at timestamptz default now());
+CREATE TABLE IF NOT EXISTS favourites (id uuid default gen_random_uuid() primary key, user_id uuid, ground_id uuid, created_at timestamptz default now(), UNIQUE(user_id, ground_id));
+*/
 import { useState, useEffect, useRef } from "react";
 import { supabase } from './supabase';
 import L from 'leaflet';
@@ -1339,6 +1354,41 @@ input,select,textarea{font-size:16px !important;}
 .app.dark .reg-col{color:#94A3B8 !important;}
 .app.dark .reg-totals{background:#111827 !important;border-color:#1E293B !important;}
 .app.dark .reg-total-row{color:#94A3B8 !important;}
+
+/* ── GROUND OF THE WEEK ── */
+.gotw-card{position:relative;border-radius:18px;overflow:hidden;height:140px;cursor:pointer;margin-bottom:4px;}
+.gotw-img{width:100%;height:100%;object-fit:cover;display:block;}
+.gotw-overlay{position:absolute;inset:0;background:linear-gradient(135deg,rgba(0,0,0,.6) 0%,rgba(0,0,0,.25) 100%);}
+.gotw-badge{position:absolute;top:12px;left:12px;background:rgba(245,158,11,.95);color:#fff;font-size:10px;font-weight:800;padding:4px 10px;border-radius:100px;letter-spacing:.4px;}
+.gotw-content{position:absolute;bottom:12px;left:14px;right:14px;}
+.gotw-name{font-family:'Sora',sans-serif;font-size:16px;font-weight:900;color:#fff;margin-bottom:4px;}
+.gotw-meta{font-size:11px;color:rgba(255,255,255,.7);display:flex;align-items:center;gap:5px;}
+
+/* ── LEADERBOARD ── */
+.ldb-list{display:flex;flex-direction:column;gap:0;background:var(--card);border-radius:14px;border:1px solid var(--border);overflow:hidden;}
+.ldb-row{display:flex;align-items:center;gap:12px;padding:11px 14px;border-bottom:1px solid var(--border2);}
+.ldb-row:last-child{border-bottom:none;}
+.ldb-rank{width:28px;text-align:center;flex-shrink:0;}
+.ldb-rank-num{font-size:12px;font-weight:800;color:var(--ink3);}
+.ldb-name{font-size:13px;font-weight:700;color:var(--ink);}
+.ldb-city{font-size:11px;color:var(--ink4);margin-top:1px;}
+.ldb-badge{background:var(--green-l);color:var(--green-d);font-size:10px;font-weight:800;padding:4px 10px;border-radius:100px;flex-shrink:0;}
+.app.dark .ldb-list{background:#111827 !important;border-color:#1E293B !important;}
+.app.dark .ldb-row{border-color:#1E293B !important;}
+.app.dark .ldb-name{color:#F1F5F9 !important;}
+.app.dark .ldb-city{color:#94A3B8 !important;}
+
+/* ── ANNOUNCEMENTS ── */
+.ann-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:8px;position:relative;padding-right:36px;}
+.ann-msg{font-size:13px;font-weight:600;color:var(--ink2);line-height:1.5;}
+.ann-meta{font-size:10px;color:var(--ink4);margin-top:5px;}
+.ann-delete{position:absolute;top:10px;right:10px;width:24px;height:24px;border-radius:8px;background:var(--border2);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--ink3);}
+.app.dark .ann-card{background:#111827 !important;border-color:#1E293B !important;}
+.app.dark .ann-msg{color:#F1F5F9 !important;}
+
+/* ── OWNER BLOCK BUTTON ── */
+.odash-block-btn{display:flex;align-items:center;justify-content:center;gap:7px;width:calc(100% - 36px);margin:8px 18px 4px;background:#FEF2F2;border:1.5px solid #FECACA;border-radius:14px;padding:11px;font-size:13px;font-weight:700;color:#DC2626;cursor:pointer;font-family:'Inter',sans-serif;}
+.app.dark .odash-block-btn{background:#2D1515 !important;border-color:#7F1D1D !important;color:#FCA5A5 !important;}
 `;
 
 /* ─── ICON HELPERS ─── */
@@ -1512,7 +1562,7 @@ export default function Outfield() {
   const [ownerSection, setOwnerSection] = useState("list");
   const [ownerFormStep, setOwnerFormStep] = useState("facility");
   const [ownerCourts, setOwnerCourts] = useState([
-    {id:1, name:"Ground 1", sports:[], type:"Outdoor", capacity:"", priceBase:"", pricePeak:"", slotDur:"2 hr", notes:""}
+    {id:1, name:"Ground 1", sports:[], type:"Outdoor", capacity:"", priceBase:"", pricePeak:"", slotDur:"2 hr", notes:"", pricingType:"fixed"}
   ]);
   const [ownerFacilityName, setOwnerFacilityName] = useState("");
   const [ownerPhone, setOwnerPhone]               = useState("");
@@ -1556,6 +1606,34 @@ export default function Outfield() {
   const [ownerRegDate, setOwnerRegDate]       = useState(() => new Date().toISOString().split('T')[0]);
   const [ownerRegBookings, setOwnerRegBookings] = useState([]);
   const [ownerRegLoading, setOwnerRegLoading]   = useState(false);
+  // Bug 1 — owner form pill state
+  const [ownerFacilityType, setOwnerFacilityType] = useState("Outdoor");
+  const [ownerDaysOpen, setOwnerDaysOpen]         = useState(["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]);
+  const [ownerCancPolicy, setOwnerCancPolicy]     = useState("Flexible");
+  const [ownerLateGrace, setOwnerLateGrace]       = useState("Not allowed");
+  const [ownerMinAdvance, setOwnerMinAdvance]     = useState("1 hr");
+  const [ownerOpenFrom, setOwnerOpenFrom]         = useState("06:00");
+  const [ownerOpenTill, setOwnerOpenTill]         = useState("23:00");
+  const [ownerArea, setOwnerArea]                 = useState("");
+  const [ownerDescription, setOwnerDescription]  = useState("");
+  // Bug 5 — exit confirmation for owner form
+  const [showOwnerExitConfirm, setShowOwnerExitConfirm] = useState(false);
+  // Feature 4 — announcements
+  const [ownerAnnouncements, setOwnerAnnouncements] = useState([]);
+  const [ownerAnnMsg, setOwnerAnnMsg]             = useState("");
+  const [ownerAnnLoading, setOwnerAnnLoading]     = useState(false);
+  // Feature 5 — quick block slot sheet
+  const [showBlockSheet, setShowBlockSheet]       = useState(false);
+  const [blockDate, setBlockDate]                 = useState(() => new Date().toISOString().split('T')[0]);
+  const [blockFrom, setBlockFrom]                 = useState("12:00");
+  const [blockTo, setBlockTo]                     = useState("14:00");
+  const [blockReason, setBlockReason]             = useState("");
+  const [blockGroundId, setBlockGroundId]         = useState("");
+  // Feature 10 — leaderboard
+  const [leaderboard, setLeaderboard]             = useState([]);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+  // Feature 11 — ground of the week
+  const [groundOfWeek, setGroundOfWeek]           = useState(null);
   const MAX_BOOKINGS = 2;
   const [dbGrounds, setDbGrounds]             = useState([]);
   const [bookedSlotKeys, setBookedSlotKeys]   = useState(new Set());
@@ -1770,6 +1848,76 @@ export default function Outfield() {
         setOwnerRegLoading(false);
       });
   }, [screen, ownerRegDate, session, authUser]);
+
+  // Ground of the week — fetch highest rated live ground
+  useEffect(() => {
+    supabase.from('grounds').select('*').eq('status','live').order('rating',{ascending:false}).limit(1)
+      .then(({ data }) => { if (data && data[0]) setGroundOfWeek(data[0]); });
+  }, []);
+
+  // Leaderboard — top 10 active players this month
+  useEffect(() => {
+    if (nav !== 'match') return;
+    setLeaderboardLoading(true);
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const now = new Date();
+    const monthLabels = Array.from({length:now.getDate()},(_,i)=>{
+      const d = new Date(now.getFullYear(),now.getMonth(),i+1);
+      return `${months[d.getMonth()]} ${d.getDate()}`;
+    });
+    supabase
+      .from('bookings')
+      .select('player_id, users!player_id(name, city)')
+      .in('booking_date', monthLabels)
+      .eq('status','confirmed')
+      .then(({ data }) => {
+        if (!data) { setLeaderboardLoading(false); return; }
+        const counts = {};
+        data.forEach(b => {
+          const k = b.player_id;
+          if (!counts[k]) counts[k] = { name: b.users?.name||'Player', city: b.users?.city||'', count: 0 };
+          counts[k].count++;
+        });
+        const sorted = Object.entries(counts)
+          .sort((a,b)=>b[1].count-a[1].count)
+          .slice(0,10)
+          .map(([id,v])=>({id,...v}));
+        setLeaderboard(sorted);
+        setLeaderboardLoading(false);
+      });
+  }, [nav]);
+
+  // Announcements — load for owner
+  useEffect(() => {
+    if (screen !== 'owner' || !session?.user || authUser?.role !== 'owner') return;
+    supabase.from('announcements').select('*').eq('owner_id', session.user.id)
+      .order('created_at',{ascending:false}).limit(10)
+      .then(({ data }) => { if (data) setOwnerAnnouncements(data); });
+  }, [screen, session, authUser]);
+
+  // Bug 5 — Android back button: push history state on screen change
+  useEffect(() => {
+    window.history.pushState({ screen }, '');
+  }, [screen]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      const prev = e.state?.screen;
+      if (screen === 'owner') { setShowOwnerExitConfirm(true); window.history.pushState({ screen }, ''); return; }
+      if (screen === 'detail') { setScreen('home'); setNav('home'); window.history.pushState({ screen: 'home' }, ''); return; }
+      if (screen === 'confirm') { setScreen('detail'); window.history.pushState({ screen: 'detail' }, ''); return; }
+      if (screen === 'success') { setScreen('home'); setNav('home'); window.history.pushState({ screen: 'home' }, ''); return; }
+      if (screen === 'editProfile') { setScreen('profile'); window.history.pushState({ screen: 'profile' }, ''); return; }
+      if (screen === 'bookingHistory') { setScreen('profile'); window.history.pushState({ screen: 'profile' }, ''); return; }
+      if (['home','explore','map','match','profile'].includes(screen)) {
+        const idx = TAB_ORDER.indexOf(nav);
+        if (idx > 0) { goNav(TAB_ORDER[idx-1]); }
+        else { window.history.pushState({ screen }, ''); }
+      }
+    };
+    window.addEventListener('popstate', handler);
+    return () => window.removeEventListener('popstate', handler);
+  }, [screen, nav]);
 
   useEffect(() => { localStorage.setItem('otf-dark', darkMode); }, [darkMode]);
   useEffect(() => { localStorage.setItem('otf-auto-dark', autoDarkMode); }, [autoDarkMode]);
@@ -2557,6 +2705,9 @@ export default function Outfield() {
                 <button className="odash-list-btn" style={{marginTop:4}} onClick={()=>setScreen("owner")}>
                   + List Another Ground
                 </button>
+                <button className="odash-block-btn" onClick={()=>{setBlockGroundId(ownerGrounds[0]?.id||"");setShowBlockSheet(true);}}>
+                  <X size={14} strokeWidth={2.5}/> Quick Block a Slot
+                </button>
               </>)}
             </div>
           </div>
@@ -2598,6 +2749,34 @@ export default function Outfield() {
               </div>
               <div style={{height:28}}/>
             </div>
+
+            {/* Ground of the Week */}
+            {groundOfWeek && (
+              <div style={{padding:"12px 18px 0"}}>
+                <div className="gotw-card" onClick={()=>openGround({
+                  id:groundOfWeek.id, name:groundOfWeek.name, area:groundOfWeek.area||"", city:groundOfWeek.city||"",
+                  distance:"—", rating:groundOfWeek.rating||0, reviews:0, priceFrom:2000,
+                  sports:["cricket","football"], amenities:groundOfWeek.amenities?groundOfWeek.amenities.split(','):[],
+                  openFrom:groundOfWeek.open_from||"06:00", openTill:groundOfWeek.open_till||"23:00",
+                  description:groundOfWeek.description||"", img:groundOfWeek.img_url, latitude:groundOfWeek.latitude,
+                  longitude:groundOfWeek.longitude, customImage:null, isFacility:false, courts:[], slots:{"default":[]}
+                })}>
+                  {groundOfWeek.img_url
+                    ? <img className="gotw-img" src={groundOfWeek.img_url} alt={groundOfWeek.name} onError={e=>{e.target.style.display="none";}}/>
+                    : <div className="gotw-img" style={{background:"linear-gradient(135deg,#0a2a1a,#16a34a33)"}}/>
+                  }
+                  <div className="gotw-overlay"/>
+                  <div className="gotw-badge">⭐ Ground of the Week</div>
+                  <div className="gotw-content">
+                    <div className="gotw-name">{groundOfWeek.name}</div>
+                    <div className="gotw-meta">
+                      <MapPin size={10} strokeWidth={2}/> {groundOfWeek.area}
+                      {groundOfWeek.rating > 0 && <><span style={{margin:"0 5px"}}>·</span><Star size={10} color="var(--amber)" fill="var(--amber)" strokeWidth={0}/> {groundOfWeek.rating}</>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Hero Carousel */}
             <div className="hero-section">
@@ -2955,6 +3134,34 @@ export default function Outfield() {
                 })}
               </div>
             )}
+            {/* ── LEADERBOARD ── */}
+            <div style={{padding:"0 18px",marginBottom:16}}>
+              <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:10,marginTop:6}}>
+                <Trophy size={15} color="var(--amber)" strokeWidth={2}/>
+                <div style={{fontSize:13,fontWeight:800,color:"var(--ink)"}}>Top Players This Month</div>
+              </div>
+              {leaderboardLoading ? (
+                <div className="bh-loading"><RefreshCw size={14} color="var(--ink4)" strokeWidth={2}/> Loading…</div>
+              ) : leaderboard.length === 0 ? (
+                <div style={{fontSize:12,color:"var(--ink4)",textAlign:"center",padding:"16px 0",background:"var(--card)",borderRadius:14,border:"1px solid var(--border)"}}>No bookings recorded yet this month</div>
+              ) : (
+                <div className="ldb-list">
+                  {leaderboard.map((p,i) => (
+                    <div key={p.id} className="ldb-row">
+                      <div className="ldb-rank">
+                        {i === 0 ? <span style={{fontSize:16}}>👑</span> : <span className="ldb-rank-num">{i+1}</span>}
+                      </div>
+                      <div style={{flex:1}}>
+                        <div className="ldb-name">{p.name}</div>
+                        <div className="ldb-city">{p.city || "Pakistan"}</div>
+                      </div>
+                      <div className="ldb-badge">{p.count} booking{p.count!==1?"s":""}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {matchTab === "teams" && (
               <div style={{padding:"0 18px"}}>
                 <div style={{fontSize:11,color:"var(--ink4)",fontWeight:500,marginBottom:12,lineHeight:1.5,background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:10,padding:"9px 12px",display:"flex",gap:7,alignItems:"flex-start"}}>
@@ -3868,7 +4075,10 @@ export default function Outfield() {
           <div className="screen active owner fade">
             <div className="owner-head">
               <button style={{display:"flex",alignItems:"center",gap:5,background:"rgba(255,255,255,.08)",border:"none",borderRadius:9,padding:"7px 12px",color:"rgba(255,255,255,.6)",cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"Inter,sans-serif"}}
-                onClick={()=>{setScreen("home");setNav("home");}}>
+                onClick={()=>{
+                  if (ownerSection === "list") setShowOwnerExitConfirm(true);
+                  else { setScreen("home"); setNav("home"); }
+                }}>
                 <ArrowLeft size={14} strokeWidth={2}/> Back
               </button>
               <div className="owner-title">Ground Owner Portal</div>
@@ -3885,6 +4095,9 @@ export default function Outfield() {
               </button>
               <button className={`owner-tab ${ownerSection==="register"?"on":""}`} onClick={()=>setOwnerSection("register")}>
                 <Calendar size={13} strokeWidth={2}/> Register
+              </button>
+              <button className={`owner-tab ${ownerSection==="announce"?"on":""}`} onClick={()=>setOwnerSection("announce")}>
+                <Bell size={13} strokeWidth={2}/> Board
               </button>
             </div>
 
@@ -3955,15 +4168,16 @@ export default function Outfield() {
                       <div key={l} className="fg">
                         <label className="flbl">{l}{required && <span style={{color:"var(--red)",marginLeft:3}}>*</span>}</label>
                         <input className="finput" placeholder={p}
-                          value={l==="Facility / Complex Name" ? ownerFacilityName : undefined}
-                          onChange={l==="Facility / Complex Name" ? e=>setOwnerFacilityName(e.target.value) : undefined}
+                          value={l==="Facility / Complex Name" ? ownerFacilityName : l==="Area / Neighbourhood" ? ownerArea : undefined}
+                          onChange={l==="Facility / Complex Name" ? e=>setOwnerFacilityName(e.target.value) : l==="Area / Neighbourhood" ? e=>setOwnerArea(e.target.value) : undefined}
                           style={required && ownerFormError && !ownerFacilityName && l==="Facility / Complex Name" ? {borderColor:"var(--red)"} : {}}
                         />
                       </div>
                     ))}
                     <div className="fg">
                       <label className="flbl">Facility Description</label>
-                      <textarea className="finput fta" style={{height:80}} placeholder="Tell players about your complex — how many grounds, surface quality, facilities available, history..."/>
+                      <textarea className="finput fta" style={{height:80}} placeholder="Tell players about your complex — how many grounds, surface quality, facilities available, history..."
+                        value={ownerDescription} onChange={e=>setOwnerDescription(e.target.value)}/>
                     </div>
                     <div className="fg">
                       <label className="flbl">Total Number of Grounds in this Facility</label>
@@ -3973,7 +4187,11 @@ export default function Outfield() {
                       <label className="flbl">Facility Type</label>
                       <div className="slot-dur-opts">
                         {["Indoor","Outdoor","Mixed"].map(t=>(
-                          <div key={t} className="slot-dur-opt" style={{fontSize:11}}>{t}</div>
+                          <div key={t} className={`slot-dur-opt ${ownerFacilityType===t?"on":""}`}
+                            style={{fontSize:11}}
+                            onClick={()=>setOwnerFacilityType(t)}>
+                            {t}
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -3993,14 +4211,19 @@ export default function Outfield() {
                   <div className="form-block">
                     <div className="form-block-t">Facility Operating Hours</div>
                     <div className="time-pair">
-                      <div className="fg"><label className="flbl">Opens At</label><input className="finput" type="time" defaultValue="06:00"/></div>
-                      <div className="fg"><label className="flbl">Closes At</label><input className="finput" type="time" defaultValue="23:00"/></div>
+                      <div className="fg"><label className="flbl">Opens At</label><input className="finput" type="time" value={ownerOpenFrom} onChange={e=>setOwnerOpenFrom(e.target.value)}/></div>
+                      <div className="fg"><label className="flbl">Closes At</label><input className="finput" type="time" value={ownerOpenTill} onChange={e=>setOwnerOpenTill(e.target.value)}/></div>
                     </div>
                     <div className="fg">
                       <label className="flbl">Days Open</label>
                       <div className="slot-dur-opts" style={{flexWrap:"wrap",gap:6}}>
                         {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d=>(
-                          <div key={d} className="slot-dur-opt" style={{minWidth:40,padding:"8px 6px",fontSize:11}}>{d}</div>
+                          <div key={d}
+                            className={`slot-dur-opt ${ownerDaysOpen.includes(d)?"on":""}`}
+                            style={{minWidth:40,padding:"8px 6px",fontSize:11}}
+                            onClick={()=>setOwnerDaysOpen(p=>p.includes(d)?p.filter(x=>x!==d):[...p,d])}>
+                            {d}
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -4047,7 +4270,12 @@ export default function Outfield() {
                       <label className="flbl">Late Booking Grace Period</label>
                       <div className="slot-dur-opts">
                         {["Not allowed","5 mins","10 mins","15 mins"].map(t=>(
-                          <div key={t} className="slot-dur-opt" style={{fontSize:10,padding:"8px 6px"}}>{t}</div>
+                          <div key={t}
+                            className={`slot-dur-opt ${ownerLateGrace===t?"on":""}`}
+                            style={{fontSize:10,padding:"8px 6px"}}
+                            onClick={()=>setOwnerLateGrace(t)}>
+                            {t}
+                          </div>
                         ))}
                       </div>
                       <div style={{fontSize:10,color:"var(--ink4)",marginTop:6,lineHeight:1.5}}>
@@ -4058,7 +4286,12 @@ export default function Outfield() {
                       <label className="flbl">Cancellation Policy</label>
                       <div className="slot-dur-opts">
                         {["Flexible","Moderate","Strict"].map(p=>(
-                          <div key={p} className="slot-dur-opt" style={{fontSize:11}}>{p}</div>
+                          <div key={p}
+                            className={`slot-dur-opt ${ownerCancPolicy===p?"on":""}`}
+                            style={{fontSize:11}}
+                            onClick={()=>setOwnerCancPolicy(p)}>
+                            {p}
+                          </div>
                         ))}
                       </div>
                       <div style={{fontSize:10,color:"var(--ink4)",marginTop:6}}>Flexible = free cancel 1hr before · Moderate = 3hr · Strict = no refund</div>
@@ -4069,7 +4302,12 @@ export default function Outfield() {
                     <div className="fg"><label className="flbl">Minimum Advance Booking Time</label>
                       <div className="slot-dur-opts">
                         {["30 min","1 hr","2 hr","Same day","1 day prior"].map(t=>(
-                          <div key={t} className="slot-dur-opt" style={{fontSize:10,padding:"8px 6px"}}>{t}</div>
+                          <div key={t}
+                            className={`slot-dur-opt ${ownerMinAdvance===t?"on":""}`}
+                            style={{fontSize:10,padding:"8px 6px"}}
+                            onClick={()=>setOwnerMinAdvance(t)}>
+                            {t}
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -4211,16 +4449,32 @@ export default function Outfield() {
                             </select>
                           </div>
                         </div>
+                        <div className="fg">
+                          <label className="flbl">Pricing Model</label>
+                          <div className="slot-dur-opts">
+                            {[["fixed","Fixed Price (per slot)"],["per_person","Per Person (×players)"]].map(([v,l])=>(
+                              <div key={v}
+                                className={`slot-dur-opt ${court.pricingType===v?"on":""}`}
+                                style={{fontSize:11}}
+                                onClick={()=>{const nc=[...ownerCourts];nc[ci].pricingType=v;setOwnerCourts(nc);}}>
+                                {l}
+                              </div>
+                            ))}
+                          </div>
+                          <div style={{fontSize:10,color:"var(--ink4)",marginTop:5}}>
+                            {court.pricingType==="per_person" ? "Price entered is per player — total = price × number of players at booking" : "Price entered is the total for the entire slot regardless of player count"}
+                          </div>
+                        </div>
                         <div className="time-pair">
                           <div className="fg">
-                            <label className="flbl">Base Price (Rs/slot)</label>
-                            <input className="finput" type="number" placeholder="e.g. 2500"
+                            <label className="flbl">{court.pricingType==="per_person"?"Price Per Person (Rs)":"Base Price (Rs/slot)"}</label>
+                            <input className="finput" type="number" placeholder={court.pricingType==="per_person"?"e.g. 300":"e.g. 2500"}
                               value={court.priceBase}
                               onChange={e=>{const nc=[...ownerCourts];nc[ci].priceBase=e.target.value;setOwnerCourts(nc);}}/>
                           </div>
                           <div className="fg">
-                            <label className="flbl">Peak Price (Rs/slot)</label>
-                            <input className="finput" type="number" placeholder="e.g. 3500"
+                            <label className="flbl">{court.pricingType==="per_person"?"Peak Per Person (Rs)":"Peak Price (Rs/slot)"}</label>
+                            <input className="finput" type="number" placeholder={court.pricingType==="per_person"?"e.g. 400":"e.g. 3500"}
                               value={court.pricePeak}
                               onChange={e=>{const nc=[...ownerCourts];nc[ci].pricePeak=e.target.value;setOwnerCourts(nc);}}/>
                           </div>
@@ -4241,7 +4495,7 @@ export default function Outfield() {
 
                   {/* Add court button */}
                   <button className="add-court-btn"
-                    onClick={()=>setOwnerCourts(p=>[...p,{id:Date.now(),name:`Ground ${p.length+1}`,sports:[],type:"",capacity:"",priceBase:"",pricePeak:"",slotDur:"2 hr",notes:""}])}>
+                    onClick={()=>setOwnerCourts(p=>[...p,{id:Date.now(),name:`Ground ${p.length+1}`,sports:[],type:"",capacity:"",priceBase:"",pricePeak:"",slotDur:"2 hr",notes:"",pricingType:"fixed"}])}>
                     <Plus size={16} strokeWidth={2.5}/> Add Another Ground to This Facility
                   </button>
 
@@ -4257,48 +4511,61 @@ export default function Outfield() {
                         showToast("Each ground needs a name, sport, and base price.");
                         return;
                       }
+                      if (!session?.user?.id) {
+                        showToast("You must be logged in to submit.");
+                        return;
+                      }
                       // Save to Supabase
                       (async () => {
-                        const { data: ground, error: gErr } = await supabase
+                        const { data: groundData, error: gErr } = await supabase
                           .from('grounds')
                           .insert({
-                            owner_id:     session?.user?.id || null,
-                            name:         ownerFacilityName,
-                            area:         "",
-                            city:         authUser?.city || "Karachi",
-                            description:  "",
-                            open_from:    ownerBreaks[0]?.from || "06:00",
-                            open_till:    "23:00",
-                            amenities:    ownerAmenities.join(','),
-                            contact_phone: ownerPhone,
-                            img_url:      null,
-                            rating:       0,
-                            status:       "pending",
-                            latitude:     ownerLat,
-                            longitude:    ownerLng
+                            owner_id:      session.user.id,
+                            name:          ownerFacilityName.trim() || "My Ground",
+                            area:          ownerArea.trim() || "Karachi",
+                            city:          authUser?.city || "Karachi",
+                            description:   ownerDescription.trim() || "",
+                            open_from:     ownerOpenFrom || "06:00",
+                            open_till:     ownerOpenTill || "23:00",
+                            amenities:     ownerAmenities.join(','),
+                            contact_phone: ownerPhone.trim() || "",
+                            img_url:       null,
+                            rating:        0,
+                            status:        "pending",
+                            latitude:      ownerLat || 24.8607,
+                            longitude:     ownerLng || 67.0011
                           })
                           .select()
                           .single();
-                        if (!gErr && ground) {
+                        if (gErr) {
+                          console.error("Ground insert error:", gErr);
+                          showToast("Submission failed: " + (gErr.message || "Please try again."));
+                          return;
+                        }
+                        if (groundData) {
                           // Insert each court
                           const courtRows = ownerCourts.map(c => ({
-                            ground_id:          ground.id,
-                            name:               c.name,
+                            ground_id:          groundData.id,
+                            name:               c.name.trim() || "Ground",
                             sports:             c.sports.join(','),
-                            surface_type:       c.type,
+                            surface_type:       c.type || "Outdoor",
                             capacity:           parseInt(c.capacity) || null,
-                            price_base:         parseInt(c.priceBase) || null,
-                            price_peak:         parseInt(c.pricePeak) || null,
+                            price_base:         parseInt(c.priceBase) || 0,
+                            price_peak:         parseInt(c.pricePeak) || parseInt(c.priceBase) || 0,
                             slot_duration_mins: c.slotDur === "1 hr" ? 60 : c.slotDur === "1.5 hr" ? 90 : c.slotDur === "3 hr" ? 180 : 120,
-                            notes:              c.notes
+                            notes:              c.notes || "",
+                            pricing_type:       c.pricingType || "fixed"
                           }));
-                          await supabase.from('courts').insert(courtRows);
+                          const { error: cErr } = await supabase.from('courts').insert(courtRows);
+                          if (cErr) console.error("Courts insert error:", cErr);
                           showToast("Submitted! We'll review and go live within 24 hours.");
-                        } else {
-                          showToast("Submission failed. Please try again.");
+                          // Navigate to owner dashboard
+                          setOwnerSection("list");
+                          setOwnerFormStep("facility");
+                          setScreen("home");
+                          setNav("home");
+                          setTabIndex(0);
                         }
-                        setScreen("home");
-                        setNav("home");
                       })();
                     }}>
                     Submit Facility for Review
@@ -4442,6 +4709,71 @@ export default function Outfield() {
                     </div>
                   </div>
                 </>)}
+              </>)}
+
+              {/* ── ANNOUNCEMENTS TAB ── */}
+              {ownerSection === "announce" && (<>
+                <div className="info-note" style={{marginBottom:14}}>
+                  <AlertCircle size={13} color="#92400E" strokeWidth={2} style={{flexShrink:0,marginTop:1}}/>
+                  <span>Post a notice for players who have booked your ground. e.g. "Ground closed Friday for maintenance."</span>
+                </div>
+                <div className="form-block" style={{marginBottom:14}}>
+                  <div className="form-block-t">New Announcement</div>
+                  {ownerGrounds.length > 1 && (
+                    <div className="fg" style={{marginBottom:10}}>
+                      <label className="flbl">Ground</label>
+                      <select className="finput" style={{cursor:"pointer"}}
+                        value={blockGroundId}
+                        onChange={e=>setBlockGroundId(e.target.value)}>
+                        <option value="">All my grounds</option>
+                        {ownerGrounds.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}
+                      </select>
+                    </div>
+                  )}
+                  <textarea className="finput fta" style={{height:72}}
+                    placeholder="Type your announcement here..."
+                    value={ownerAnnMsg} onChange={e=>setOwnerAnnMsg(e.target.value)}/>
+                  <button className="book-btn" style={{marginTop:10}}
+                    disabled={!ownerAnnMsg.trim() || ownerAnnLoading}
+                    onClick={async()=>{
+                      if (!ownerAnnMsg.trim() || !session?.user) return;
+                      setOwnerAnnLoading(true);
+                      const groundId = blockGroundId || (ownerGrounds[0]?.id || null);
+                      const { data, error } = await supabase.from('announcements').insert({
+                        owner_id: session.user.id,
+                        ground_id: groundId,
+                        message: ownerAnnMsg.trim()
+                      }).select().single();
+                      if (!error && data) {
+                        setOwnerAnnouncements(p=>[data,...p]);
+                        setOwnerAnnMsg("");
+                        showToast("Announcement posted!");
+                      } else {
+                        console.error("Announcement error:", error);
+                        showToast("Failed to post announcement");
+                      }
+                      setOwnerAnnLoading(false);
+                    }}>
+                    {ownerAnnLoading ? "Posting…" : "Post Announcement"}
+                  </button>
+                </div>
+                {ownerAnnouncements.length === 0 ? (
+                  <div className="reg-empty">
+                    <Bell size={22} color="var(--ink4)" strokeWidth={1.5}/>
+                    <div style={{fontSize:12,fontWeight:700,color:"var(--ink3)",marginTop:8}}>No announcements yet</div>
+                  </div>
+                ) : ownerAnnouncements.map((a,i)=>(
+                  <div key={a.id||i} className="ann-card">
+                    <div className="ann-msg">{a.message}</div>
+                    <div className="ann-meta">{new Date(a.created_at).toLocaleDateString('en-PK',{day:'numeric',month:'short',year:'numeric'})}</div>
+                    <button className="ann-delete" onClick={async()=>{
+                      await supabase.from('announcements').delete().eq('id',a.id);
+                      setOwnerAnnouncements(p=>p.filter(x=>x.id!==a.id));
+                    }}>
+                      <X size={12} strokeWidth={2.5}/>
+                    </button>
+                  </div>
+                ))}
               </>)}
             </div>
           </div>
@@ -4713,6 +5045,64 @@ export default function Outfield() {
           </div>
         )}
 
+        {/* ═══ QUICK BLOCK SHEET ═══ */}
+        {showBlockSheet && (
+          <div className="cancel-overlay" onClick={e=>{if(e.target.className==="cancel-overlay")setShowBlockSheet(false);}}>
+            <div className="cancel-sheet" style={{paddingBottom:24}}>
+              <div className="cancel-title">Block a Slot</div>
+              <div className="cancel-sub" style={{marginBottom:14}}>Players won't be able to book this slot. It will show as "Unavailable".</div>
+              {ownerGrounds.length > 1 && (
+                <div className="fg" style={{marginBottom:10}}>
+                  <select className="finput" style={{cursor:"pointer"}}
+                    value={blockGroundId}
+                    onChange={e=>setBlockGroundId(e.target.value)}>
+                    {ownerGrounds.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}
+                  </select>
+                </div>
+              )}
+              <div className="fg" style={{marginBottom:10}}>
+                <label className="flbl">Date</label>
+                <input className="finput" type="date" value={blockDate} onChange={e=>setBlockDate(e.target.value)}/>
+              </div>
+              <div style={{display:"flex",gap:10,marginBottom:10}}>
+                <div className="fg" style={{flex:1}}>
+                  <label className="flbl">From</label>
+                  <input className="finput" type="time" value={blockFrom} onChange={e=>setBlockFrom(e.target.value)}/>
+                </div>
+                <div className="fg" style={{flex:1}}>
+                  <label className="flbl">To</label>
+                  <input className="finput" type="time" value={blockTo} onChange={e=>setBlockTo(e.target.value)}/>
+                </div>
+              </div>
+              <div className="fg" style={{marginBottom:14}}>
+                <input className="finput" placeholder="Reason (optional)" value={blockReason} onChange={e=>setBlockReason(e.target.value)}/>
+              </div>
+              <div className="cancel-actions">
+                <button className="cancel-no" onClick={()=>setShowBlockSheet(false)}>Cancel</button>
+                <button className="cancel-yes" onClick={async()=>{
+                  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+                  const [y,m,d] = blockDate.split('-').map(Number);
+                  const dateLabel = `${months[m-1]} ${d}`;
+                  await supabase.from('blocked_slots').insert({
+                    owner_id: session?.user?.id,
+                    ground_id: blockGroundId || null,
+                    date: dateLabel,
+                    start_time: blockFrom,
+                    end_time: blockTo,
+                    reason: blockReason.trim() || null
+                  });
+                  setBlockedSlots(p=>[...p,{date:dateLabel,from:blockFrom,to:blockTo,reason:blockReason}]);
+                  setShowBlockSheet(false);
+                  setBlockReason("");
+                  showToast("Slot blocked successfully");
+                }}>
+                  Block Slot
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ═══ FAVOURITE GROUNDS OVERLAY ═══ */}
         {showFavScreen && (
           <div style={{position:"fixed",inset:0,background:"var(--bg)",zIndex:900,overflowY:"auto",paddingBottom:88,maxWidth:430,margin:"0 auto"}}>
@@ -4759,8 +5149,22 @@ export default function Outfield() {
           </div>
         )}
 
+        {/* ═══ OWNER EXIT CONFIRMATION ═══ */}
+        {showOwnerExitConfirm && (
+          <div className="cancel-overlay" onClick={e=>{if(e.target.className==="cancel-overlay")setShowOwnerExitConfirm(false);}}>
+            <div className="cancel-sheet">
+              <div className="cancel-title">Exit listing form?</div>
+              <div className="cancel-sub">Your progress will be lost. Are you sure?</div>
+              <div className="cancel-actions">
+                <button className="cancel-no" onClick={()=>setShowOwnerExitConfirm(false)}>Keep editing</button>
+                <button className="cancel-yes" onClick={()=>{setShowOwnerExitConfirm(false);setScreen("home");setNav("home");setTabIndex(0);}}>Yes, exit</button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ═══ NAV BAR ═══ */}
-        {!["splash","onboard","success"].includes(screen) && (
+        {!["splash","onboard","success","owner"].includes(screen) && (
           <div className="navbar">
             {[
               {id:"home",    Icon:Home,    label:"Home"},
