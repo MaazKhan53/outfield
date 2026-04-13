@@ -1107,6 +1107,12 @@ input,select,textarea{font-size:16px !important;}
 .odash-booking-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;}
 .odash-booking-ground{font-family:'Sora',sans-serif;font-size:13px;font-weight:800;color:var(--ink);}
 .odash-booking-court{font-size:10px;color:var(--ink4);margin-top:1px;}
+.odash-bkstat-row{display:flex;gap:0;border-radius:10px;overflow:hidden;border:1px solid var(--border);margin:10px 0 8px;}
+.odash-bkstat{flex:1;padding:8px 6px;text-align:center;background:#fff;}
+.odash-bkstat:not(:last-child){border-right:1px solid var(--border);}
+.odash-bkstat-n{font-family:'Sora',sans-serif;font-size:14px;font-weight:900;color:var(--ink);}
+.odash-bkstat-l{font-size:9px;color:var(--ink4);margin-top:2px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;}
+.odash-list-btn{width:100%;background:var(--ink);color:#fff;border:none;border-radius:13px;padding:13px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;display:flex;align-items:center;justify-content:center;gap:6px;}
 .odash-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:44px 20px;color:var(--ink4);}
 .odash-empty-ico{width:52px;height:52px;border-radius:16px;background:var(--border2);display:flex;align-items:center;justify-content:center;}
 .odash-empty-t{font-size:13px;font-weight:700;color:var(--ink2);}
@@ -1335,38 +1341,20 @@ export default function Outfield() {
       });
   }, []);
 
-  // Fetch owner dashboard data when owner is on home screen
+  // Fetch owner dashboard — grounds with nested courts + booking counts
   useEffect(() => {
     if (screen !== "home" || authUser?.role !== "owner" || !session?.user) return;
     setOwnerDashLoading(true);
     supabase
       .from('grounds')
-      .select('*')
+      .select('*, courts(id, bookings(id, status, total_price))')
       .eq('owner_id', session.user.id)
-      .then(async ({ data: grounds }) => {
-        const gList = grounds || [];
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        const gList = data || [];
         setOwnerGrounds(gList);
-        if (gList.length > 0) {
-          const groundIds = gList.map(g => g.id);
-          // Fetch courts belonging to owner's grounds
-          const { data: courtRows } = await supabase
-            .from('courts')
-            .select('id, name, ground_id')
-            .in('ground_id', groundIds);
-          const courtIds = (courtRows || []).map(c => c.id);
-          if (courtIds.length > 0) {
-            const { data: bkgs } = await supabase
-              .from('bookings')
-              .select('*, courts(name, ground_id)')
-              .in('court_id', courtIds)
-              .order('created_at', { ascending: false });
-            setOwnerBookings(bkgs || []);
-          } else {
-            setOwnerBookings([]);
-          }
-        } else {
-          setOwnerBookings([]);
-        }
+        // Flatten all bookings so header totals still work
+        setOwnerBookings(gList.flatMap(g => (g.courts||[]).flatMap(c => c.bookings||[])));
         setOwnerDashLoading(false);
       });
   }, [screen, authUser, session]);
@@ -1931,119 +1919,131 @@ export default function Outfield() {
         )}
 
         {/* ═══ OWNER DASHBOARD ═══ */}
-        {screen === "home" && authUser?.role === "owner" && (
+        {screen === "home" && authUser?.role === "owner" && (() => {
+          const totalBookings = ownerBookings.length;
+          const totalRevenue  = ownerBookings.reduce((s,b) => s + (b.total_price||0), 0);
+          return (
           <div className="screen active fade" style={{background:"var(--bg)",overflowY:"auto",paddingBottom:88,minHeight:"100svh"}}>
-            {/* Header */}
+
+            {/* ── Header ── */}
             <div className="odash-head">
               <div className="odash-head-glow"/>
-              <div className="odash-greeting">Owner Portal</div>
+              <div className="odash-greeting">Owner Dashboard</div>
               <div className="odash-title">Your <em>Grounds</em></div>
               <div className="odash-sub">{authUser?.name || "Owner"} · {authUser?.city || "Pakistan"}</div>
               <div className="odash-stats">
                 <div className="odash-stat">
-                  <div className="odash-stat-n">{ownerGrounds.length}</div>
+                  <div className="odash-stat-n">{ownerDashLoading ? "…" : ownerGrounds.length}</div>
                   <div className="odash-stat-l">Grounds</div>
                 </div>
                 <div className="odash-stat">
-                  <div className="odash-stat-n">{ownerBookings.length}</div>
+                  <div className="odash-stat-n">{ownerDashLoading ? "…" : totalBookings}</div>
                   <div className="odash-stat-l">Bookings</div>
                 </div>
                 <div className="odash-stat">
-                  <div className="odash-stat-n">
-                    Rs {ownerBookings.reduce((s,b)=>s+(b.total_price||0),0).toLocaleString()}
+                  <div className="odash-stat-n" style={{fontSize:13}}>
+                    {ownerDashLoading ? "…" : `Rs ${totalRevenue.toLocaleString()}`}
                   </div>
                   <div className="odash-stat-l">Revenue</div>
                 </div>
               </div>
             </div>
 
-            {/* Tabs */}
-            <div className="odash-tabs">
-              <button className={`odash-tab ${ownerDashTab==="grounds"?"on":""}`} onClick={()=>setOwnerDashTab("grounds")}>
-                <MapPin size={13} strokeWidth={2}/> My Grounds
-              </button>
-              <button className={`odash-tab ${ownerDashTab==="bookings"?"on":""}`} onClick={()=>setOwnerDashTab("bookings")}>
-                <Calendar size={13} strokeWidth={2}/> Bookings Received
-              </button>
-            </div>
-
+            {/* ── Ground list ── */}
             <div className="odash-body">
               {ownerDashLoading ? (
                 <div className="bh-loading">
-                  <RefreshCw size={16} color="var(--ink4)" strokeWidth={2}/>
-                  Loading…
+                  <RefreshCw size={16} color="var(--ink4)" strokeWidth={2}/> Loading…
                 </div>
-              ) : ownerDashTab === "grounds" ? (
-                ownerGrounds.length === 0 ? (
-                  <div className="odash-empty">
-                    <div className="odash-empty-ico">
-                      <MapPin size={22} color="var(--ink4)" strokeWidth={1.5}/>
-                    </div>
-                    <div className="odash-empty-t">No grounds listed yet</div>
-                    <div className="odash-empty-s">Use the Owner Portal to list your ground and start receiving bookings.</div>
-                    <button style={{marginTop:8,background:"var(--ink)",color:"#fff",border:"none",borderRadius:12,padding:"10px 22px",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"Inter,sans-serif"}}
-                      onClick={()=>setScreen("owner")}>
-                      List a Ground
-                    </button>
+
+              ) : ownerGrounds.length === 0 ? (
+                <div className="odash-empty">
+                  <div className="odash-empty-ico">
+                    <MapPin size={22} color="var(--ink4)" strokeWidth={1.5}/>
                   </div>
-                ) : ownerGrounds.map(g => (
-                  <div key={g.id} className="odash-ground-card">
-                    {g.img_url
-                      ? <img className="odash-ground-img" src={g.img_url} alt={g.name} onError={e=>{e.target.style.display="none";}}/>
-                      : <div className="odash-ground-img-placeholder"><MapPin size={28} color="rgba(255,255,255,.2)" strokeWidth={1.5}/></div>
-                    }
-                    <div className="odash-ground-body">
-                      <div className="odash-ground-name">{g.name}</div>
-                      <div className="odash-ground-area">
-                        <MapPin size={10} strokeWidth={2}/>{g.area}{g.city ? ` · ${g.city}` : ""}
-                      </div>
-                      <div className="odash-ground-footer">
-                        <div className={`odash-ground-status ${g.status || "pending"}`}>
-                          {g.status || "pending"}
-                        </div>
-                        <button
-                          className={`status-toggle ${g.status === 'live' ? 'live' : 'paused'}`}
-                          onClick={()=>handleToggleGroundStatus(g)}>
-                          {g.status === 'live' ? '⏸ Pause' : '▶ Go Live'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                /* Bookings tab */
-                ownerBookings.length === 0 ? (
-                  <div className="odash-empty">
-                    <div className="odash-empty-ico">
-                      <Calendar size={22} color="var(--ink4)" strokeWidth={1.5}/>
-                    </div>
-                    <div className="odash-empty-t">No bookings received yet</div>
-                    <div className="odash-empty-s">Bookings from players will appear here once your ground goes live.</div>
-                  </div>
-                ) : ownerBookings.map((b, i) => {
-                  const statusCls = b.status === "confirmed" ? "confirmed" : b.status === "cancelled" ? "cancelled" : "pending";
-                  const courtLabel = b.courts?.name || null;
+                  <div className="odash-empty-t">No grounds listed yet</div>
+                  <div className="odash-empty-s">List your ground to start receiving bookings from players.</div>
+                  <button className="odash-list-btn" onClick={()=>setScreen("owner")}>
+                    + List a Ground
+                  </button>
+                </div>
+
+              ) : (<>
+                {ownerGrounds.map(g => {
+                  const gBookings  = (g.courts||[]).flatMap(c => c.bookings||[]);
+                  const confirmed  = gBookings.filter(b => b.status === "confirmed").length;
+                  const cancelled  = gBookings.filter(b => b.status === "cancelled").length;
+                  const revenue    = gBookings
+                    .filter(b => b.status === "confirmed")
+                    .reduce((s,b) => s + (b.total_price||0), 0);
+                  const statusKey  = g.status || "pending";
+
                   return (
-                    <div key={b.id || i} className="odash-booking-card">
-                      <div className="odash-booking-top">
-                        <div>
-                          <div className="odash-booking-ground">{courtLabel || "Ground Booking"}</div>
-                          {b.booking_date && <div className="odash-booking-court">{b.booking_date} · {b.start_time} – {b.end_time}</div>}
+                    <div key={g.id} className="odash-ground-card">
+                      {/* Image */}
+                      {g.img_url
+                        ? <img className="odash-ground-img" src={g.img_url} alt={g.name}
+                            onError={e=>{e.target.style.display="none";}}/>
+                        : <div className="odash-ground-img-placeholder">
+                            <MapPin size={28} color="rgba(255,255,255,.2)" strokeWidth={1.5}/>
+                          </div>
+                      }
+
+                      <div className="odash-ground-body">
+                        {/* Name + status */}
+                        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:6}}>
+                          <div className="odash-ground-name">{g.name}</div>
+                          <div className={`odash-ground-status ${statusKey}`}>{statusKey}</div>
                         </div>
-                        <div className={`bh-status ${statusCls}`}>{b.status || "confirmed"}</div>
-                      </div>
-                      <div className="bh-divider"/>
-                      <div className="bh-bottom">
-                        <div className="bh-ref">{b.booking_ref || "—"}</div>
-                        <div className="bh-price">Rs {(b.total_price || 0).toLocaleString()}</div>
+
+                        {/* Area */}
+                        <div className="odash-ground-area">
+                          <MapPin size={10} strokeWidth={2}/>
+                          {g.area}{g.city ? ` · ${g.city}` : ""}
+                        </div>
+
+                        {/* Booking stats row */}
+                        <div className="odash-bkstat-row">
+                          <div className="odash-bkstat">
+                            <div className="odash-bkstat-n">{confirmed}</div>
+                            <div className="odash-bkstat-l">Confirmed</div>
+                          </div>
+                          <div className="odash-bkstat">
+                            <div className="odash-bkstat-n">{cancelled}</div>
+                            <div className="odash-bkstat-l">Cancelled</div>
+                          </div>
+                          <div className="odash-bkstat">
+                            <div className="odash-bkstat-n" style={{fontSize:12}}>
+                              {revenue > 0 ? `Rs ${revenue.toLocaleString()}` : "—"}
+                            </div>
+                            <div className="odash-bkstat-l">Revenue</div>
+                          </div>
+                        </div>
+
+                        {/* Footer: toggle */}
+                        <div className="odash-ground-footer">
+                          <div style={{fontSize:10,color:"var(--ink4)",fontWeight:600}}>
+                            {g.open_from||"—"} – {g.open_till||"—"}
+                          </div>
+                          <button
+                            className={`status-toggle ${statusKey === "live" ? "live" : "paused"}`}
+                            onClick={()=>handleToggleGroundStatus(g)}>
+                            {statusKey === "live" ? "⏸ Pause" : "▶ Go Live"}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
-                })
-              )}
+                })}
+
+                <button className="odash-list-btn" style={{marginTop:4}} onClick={()=>setScreen("owner")}>
+                  + List Another Ground
+                </button>
+              </>)}
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* ═══ HOME ═══ */}
         {screen === "home" && !authUser?.role?.includes("owner") && (
