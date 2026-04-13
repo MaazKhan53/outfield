@@ -3,10 +3,6 @@ import { supabase } from './supabase';
 import L from 'leaflet';
 import { MapContainer, TileLayer, Marker } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import markerIcon from 'leaflet/dist/images/marker-icon.png';
-import markerShadow from 'leaflet/dist/images/marker-shadow.png';
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({ iconUrl: markerIcon, shadowUrl: markerShadow });
 import {
   MapPin, Search, Bell, Star, Clock, ChevronRight, Heart,
   Users, Zap, Shield, ArrowLeft, Filter, Phone, Share2,
@@ -17,6 +13,14 @@ import {
   Plus, Minus, X, Check, AlertCircle, TrendingUp,
   Activity, Target, Award, Radio, RefreshCw, Map
 } from "lucide-react";
+
+/* ─── LEAFLET DEFAULT ICON FIX ─── */
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+});
 
 /* ─── DATA ─── */
 const SPORTS = [
