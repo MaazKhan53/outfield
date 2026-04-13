@@ -1261,10 +1261,6 @@ input,select,textarea{font-size:16px !important;}
 .app.dark .slot-dur-opt.on{background:#1E293B !important;color:#F1F5F9 !important;}
 .app.dark .break-row{background:#1E293B !important;border-color:#334155 !important;}
 .app.dark .book-btn{background:#16A34A !important;color:#fff !important;}
-@keyframes slideFromRight{from{transform:translateX(100%);}to{transform:translateX(0);}}
-@keyframes slideFromLeft{from{transform:translateX(-100%);}to{transform:translateX(0);}}
-.slide-from-right{animation:slideFromRight 0.28s cubic-bezier(0.25,0.46,0.45,0.94) forwards;}
-.slide-from-left{animation:slideFromLeft 0.28s cubic-bezier(0.25,0.46,0.45,0.94) forwards;}
 
 /* dark mode toggle row */
 .dm-section{background:var(--card);border-radius:var(--r2);border:1px solid var(--border2);overflow:hidden;margin-bottom:12px;}
@@ -1450,7 +1446,7 @@ function MapScreen({ grounds, darkMode, onBookGround }) {
 export default function Outfield() {
   const [screen, setScreen]   = useState("splash");
   const [nav, setNav]         = useState("home");
-  const [slideDirection, setSlideDirection] = useState('right');
+  const [tabIndex, setTabIndex] = useState(0);
   const [sport, setSport]     = useState("all");
   const [search, setSearch]   = useState("");
   const [ground, setGround]   = useState(null);
@@ -1545,10 +1541,8 @@ export default function Outfield() {
     if(Math.abs(dx) > 110 && Math.abs(dx) > Math.abs(dy) * 3.5) {
       const idx = TAB_ORDER.indexOf(nav);
       if(dx < 0 && idx < TAB_ORDER.length - 1) {
-        setSlideDirection('right');
         goNav(TAB_ORDER[idx + 1]);
       } else if(dx > 0 && idx > 0) {
-        setSlideDirection('left');
         goNav(TAB_ORDER[idx - 1]);
       }
     }
@@ -1842,9 +1836,8 @@ export default function Outfield() {
   };
 
   const goNav = (n) => {
-    const currentIdx = TAB_ORDER.indexOf(nav);
-    const nextIdx = TAB_ORDER.indexOf(n);
-    setSlideDirection(nextIdx > currentIdx ? 'right' : 'left');
+    const idx = TAB_ORDER.indexOf(n);
+    setTabIndex(idx);
     setNav(n);
     setScreen({home:"home",explore:"explore",map:"map",match:"match",profile:"profile"}[n]);
   };
@@ -2222,12 +2215,17 @@ export default function Outfield() {
           </div>
         )}
 
-        {/* ═══ OWNER DASHBOARD ═══ */}
-        {screen === "home" && authUser?.role === "owner" && (() => {
+        {/* ═══ TAB STRIP ═══ */}
+        {['home','explore','map','match','profile'].includes(screen) && (
+          <div style={{overflow:'hidden',width:'100%',position:'relative',flex:1}}>
+            <div style={{display:'flex',width:'500%',transform:`translateX(-${tabIndex * 20}%)`,transition:'transform 0.32s cubic-bezier(0.25,0.46,0.45,0.94)',willChange:'transform'}}>
+              {/* HOME PANEL */}
+              <div style={{width:'20%',flexShrink:0,overflowY:'auto',minHeight:'calc(100svh - 72px)'}}>
+        {authUser?.role === "owner" && (() => {
           const totalBookings = ownerBookings.length;
           const totalRevenue  = ownerBookings.reduce((s,b) => s + (b.total_price||0), 0);
           return (
-          <div className="screen active fade" style={{background:"var(--bg)",overflowY:"auto",paddingBottom:88,minHeight:"100svh"}}>
+          <div style={{background:"var(--bg)",paddingBottom:88,minHeight:"100%"}}>
 
             {/* ── Header ── */}
             <div className="odash-head">
@@ -2350,8 +2348,8 @@ export default function Outfield() {
         })()}
 
         {/* ═══ HOME ═══ */}
-        {screen === "home" && !authUser?.role?.includes("owner") && (
-          <div className={`screen active home ${slideDirection === 'right' ? 'slide-from-right' : 'slide-from-left'}`}>
+        {!authUser?.role?.includes("owner") && (
+          <div className="screen active home">
             <div className="home-head">
               <div className="home-head-blob"/><div className="home-head-blob2"/>
               <div className="hrow">
@@ -2532,6 +2530,440 @@ export default function Outfield() {
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          </div>
+        )}
+              </div>
+
+              {/* EXPLORE PANEL */}
+              <div style={{width:'20%',flexShrink:0,overflowY:'auto',minHeight:'calc(100svh - 72px)'}}>
+                <div className="screen active explore">
+            <div className="exp-head">
+              <div className="exp-title" style={{display:"flex",alignItems:"center",gap:9}}>
+                <div style={{width:34,height:34,borderRadius:10,background:"rgba(255,255,255,.08)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <Compass size={17} color="#fff" strokeWidth={2}/>
+                </div>
+                Explore Grounds
+              </div>
+              <div className="exp-sub">Browse all venues across Karachi</div>
+            </div>
+            <div style={{height:14}}/>
+            <div className="sport-section" style={{paddingBottom:8}}>
+              <div className="sport-scroll" data-swipe-ignore="true">
+                {SPORTS.map(s=>{
+                  const on=sport===s.id;
+                  return (
+                    <div key={s.id} className={`sport-chip ${on?"on":""}`}
+                      style={on?{background:s.bg}:{}} onClick={()=>setSport(s.id)}>
+                      <div className="sport-chip-ico" style={{background:on?"rgba(255,255,255,.15)":s.bg}}>
+                        <NeonSportIcon id={s.id} color={on?"#fff":s.neon} size={14}/>
+                      </div>
+                      <span className="sport-chip-label" style={on?{color:s.fg}:{}}>{s.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div style={{padding:"0 18px 8px",display:"flex",alignItems:"center",gap:8}}>
+              <div className="search-box" style={{background:"#fff",border:"1.5px solid var(--border)",flex:1}}>
+                <Search size={14} color="var(--ink4)" strokeWidth={2}/>
+                <input className="search-input" style={{color:"var(--ink)"}} placeholder="Search by name or area..."
+                  value={search} onChange={e=>setSearch(e.target.value)}/>
+              </div>
+              <div style={{width:42,height:42,borderRadius:12,background:showFilterPanel||timeFilterFrom?"var(--ink)":"#fff",border:`1.5px solid ${showFilterPanel||timeFilterFrom?"var(--ink)":"var(--border)"}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,transition:"all .2s"}}
+                onClick={()=>setShowFilterPanel(p=>!p)}>
+                <SlidersHorizontal size={16} color={showFilterPanel||timeFilterFrom?"#fff":"var(--ink4)"} strokeWidth={2}/>
+              </div>
+            </div>
+            {showFilterPanel && (
+              <div className="filter-panel">
+                <div className="filter-panel-title">
+                  Filters
+                  {(timeFilterFrom||timeFilterTo) && (
+                    <span className="filter-clear" onClick={()=>{setTimeFilterFrom("");setTimeFilterTo("");}}>Clear all</span>
+                  )}
+                </div>
+                <div style={{fontSize:11,fontWeight:700,color:"var(--ink2)",marginBottom:8}}>Available Time</div>
+                <div className="time-filter-row">
+                  <span className="time-filter-label">From</span>
+                  <select className="time-filter-select" value={timeFilterFrom} onChange={e=>setTimeFilterFrom(e.target.value)}>
+                    <option value="">Any time</option>
+                    {["06:00","07:00","08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00","20:00","21:00","22:00"].map(t=>(
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="time-filter-row">
+                  <span className="time-filter-label">To</span>
+                  <select className="time-filter-select" value={timeFilterTo} onChange={e=>setTimeFilterTo(e.target.value)}>
+                    <option value="">Any time</option>
+                    {["07:00","08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00","20:00","21:00","22:00","23:00"].map(t=>(
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                {timeFilterFrom && timeFilterTo && (
+                  <div className="filter-active-badge" style={{marginTop:4}}>
+                    <CheckCircle size={10} strokeWidth={2.5}/>
+                    Showing grounds with slots {timeFilterFrom}–{timeFilterTo}
+                  </div>
+                )}
+              </div>
+            )}
+            <div style={{padding:"0 18px 0"}}>
+              {filtered.length===0 && (
+                <div className="empty">
+                  <div className="empty-ico-wrap"><Search size={24} color="var(--ink4)" strokeWidth={1.5}/></div>
+                  <div className="empty-t">{timeFilterFrom?"No grounds available at that time":"No results"}</div>
+                  <div className="empty-s">{timeFilterFrom?"Try adjusting your time filter":"Try a different search or sport"}</div>
+                </div>
+              )}
+              <div className="glist">
+                {filtered.map(g=>(
+                  <div key={g.id} className="gcard" onClick={()=>openGround(g)}>
+                    <div className="gcard-img-wrap">
+                      <img className="gcard-img" src={gImg(g)} alt={g.name} onError={e=>{e.target.style.display="none";}}/>
+                      <div className="gcard-overlay"/>
+                      <div className="gcard-bl">
+                        <div className="gcard-name">{g.name}</div>
+                        <div className="gcard-area"><MapPin size={9} color="rgba(255,255,255,.6)" strokeWidth={2}/>{g.area}</div>
+                      </div>
+                      <div className="gcard-tr">
+                        <div className="img-pill"><Star size={9} color="var(--amber)" fill="var(--amber)" strokeWidth={0}/> {g.rating}</div>
+                      </div>
+                      <div className="gcard-br"><div className="img-pill green">Rs {g.priceFrom.toLocaleString()}</div></div>
+                    </div>
+                    <div className="gcard-body">
+                      <div className="gcard-info-row">
+                        <div className="gcard-info-item"><Navigation size={12} color="var(--ink4)" strokeWidth={2}/>{g.distance}</div>
+                        <div className="gcard-info-item"><Clock size={12} color="var(--ink4)" strokeWidth={2}/>{g.openFrom}–{g.openTill}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+                </div>
+              </div>
+
+              {/* MAP PANEL */}
+              <div style={{width:'20%',flexShrink:0,height:'calc(100svh - 72px)'}}>
+                <div className="map-screen">
+                  <MapScreen
+                    grounds={dbGrounds.length > 0 ? dbGrounds : GROUNDS}
+                    darkMode={darkMode}
+                    onBookGround={(g) => { setGround(g); setScreen("ground"); }}
+                  />
+                </div>
+              </div>
+
+              {/* MATCH PANEL */}
+              <div style={{width:'20%',flexShrink:0,overflowY:'auto',minHeight:'calc(100svh - 72px)'}}>
+                <div className="screen active match">
+            <div className="match-head">
+              <div className="match-glow"/>
+              <div className="match-title" style={{display:"flex",alignItems:"center",gap:9}}>
+                <div style={{width:34,height:34,borderRadius:10,background:"rgba(249,115,22,.18)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <UserPlus size={17} color="var(--orange)" strokeWidth={2}/>
+                </div>
+                Matchmaking
+              </div>
+              <div className="match-sub">Find players or challenge a team</div>
+            </div>
+            <div style={{height:12}}/>
+            <div className="match-tabs">
+              <button className={`match-tab ${matchTab==="players"?"on":""}`} onClick={()=>setMatchTab("players")}>
+                <UserPlus size={13} strokeWidth={2}/> Find Players
+              </button>
+              <button className={`match-tab ${matchTab==="teams"?"on":""}`} onClick={()=>setMatchTab("teams")}>
+                <Users size={13} strokeWidth={2}/> Team vs Team
+              </button>
+            </div>
+            <div style={{height:10}}/>
+            {matchTab === "players" && (
+              <div style={{padding:"0 18px"}}>
+                {allLfp.length === 0 ? (
+                  <div className="empty">
+                    <div className="empty-ico-wrap"><UserPlus size={24} color="var(--ink4)" strokeWidth={1.5}/></div>
+                    <div className="empty-t">No open games yet</div>
+                    <div className="empty-s">Book a slot and toggle "Looking for players" to appear here</div>
+                  </div>
+                ) : allLfp.map((s,i)=>{
+                  const jk = `m-${s.groundId}-${s.dateLabel}-${i}`;
+                  const jnd = joined[jk];
+                  const sp = sportObj(s.sport);
+                  const spotsLeft = Math.max(0,(s.need||0)-(s.joined||0)-(jnd?1:0));
+                  return (
+                    <div key={i} className="mc">
+                      <div className="mc-top">
+                        <div style={{flex:1}}>
+                          <div className="mc-name">{s.groundName}</div>
+                          <div style={{display:"flex",alignItems:"center",gap:5,marginTop:4}}>
+                            <span className={`player-style-badge ${s.style||"casual"}`}>
+                              {s.style==="competitive"?"🏆 Competitive":"😊 Casual"}
+                            </span>
+                            {s.position && (
+                              <span style={{fontSize:9,color:"var(--ink4)",fontWeight:600}}>{s.position}</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="mc-sport-tag"
+                          style={{background:`${sp.bg}15`,color:sp.fg,border:`1px solid ${sp.bg}30`}}>
+                          <div style={{display:"flex",alignItems:"center",gap:4}}>
+                            <NeonSportIcon id={sp.id} color={sp.neon} size={12}/> {sp.label}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mc-detail">
+                        <div className="mc-detail-row"><Calendar size={11} strokeWidth={2}/>{s.dateLabel} · {s.time}</div>
+                        <div className="mc-detail-row"><MapPin size={11} strokeWidth={2}/>{s.groundArea} · Booked by {s.bookedBy}</div>
+                      </div>
+                      <div className="mc-bottom">
+                        <div className="mc-avs">
+                          {Array.from({length:Math.min((s.joined||0)+(jnd?1:0),5)}).map((_,j)=>(
+                            <div key={j} className="mc-av">{String.fromCharCode(65+j)}</div>
+                          ))}
+                        </div>
+                        <div className="mc-spots">
+                          {spotsLeft>0?`${spotsLeft} spot${spotsLeft!==1?"s":""} needed`:"Full"}
+                        </div>
+                        <button className={`mc-join ${jnd?"done":""}`}
+                          onClick={()=>{const nv=!jnd;setJoined(p=>({...p,[jk]:nv}));showToast(nv?"Request sent!":"Request cancelled");}}
+                          disabled={spotsLeft<=0&&!jnd}>
+                          {jnd ? <><Check size={11} strokeWidth={2.5}/>Requested</> : <><UserPlus size={11} strokeWidth={2}/>I'm in!</>}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {matchTab === "teams" && (
+              <div style={{padding:"0 18px"}}>
+                <div style={{fontSize:11,color:"var(--ink4)",fontWeight:500,marginBottom:12,lineHeight:1.5,background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:10,padding:"9px 12px",display:"flex",gap:7,alignItems:"flex-start"}}>
+                  <AlertCircle size={13} color="#F97316" strokeWidth={2} style={{flexShrink:0,marginTop:1}}/>
+                  <span>Teams listed below have a booked ground and are looking for an opponent. Request to challenge — the captain will accept or decline.</span>
+                </div>
+                {TEAM_CHALLENGES.map((tc)=>{
+                  const sp = sportObj(tc.sport);
+                  const reqKey = tc.id;
+                  const reqSent = teamReqs[reqKey];
+                  return (
+                    <div key={tc.id} className="tc">
+                      <div className="tc-banner" style={{background:`linear-gradient(90deg,${sp.bg},${sp.fg}55)`}}/>
+                      <div className="tc-body">
+                        <div className="tc-top">
+                          <div>
+                            <div className="tc-team">{tc.teamName}</div>
+                            <div style={{display:"flex",alignItems:"center",gap:6,marginTop:3}}>
+                              <div style={{display:"flex",alignItems:"center",gap:4,fontSize:10,fontWeight:700,color:sp.neon}}>
+                                <NeonSportIcon id={tc.sport} color={sp.neon} size={13}/>{sp.label}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="tc-format-tag">{tc.format}</div>
+                        </div>
+                        <div className="tc-detail">
+                          <div className="tc-detail-row"><MapPin size={11} strokeWidth={2}/>{tc.groundName} · {tc.area}</div>
+                          <div className="tc-detail-row"><Calendar size={11} strokeWidth={2}/>{tc.date} · {tc.time}</div>
+                          <div className="tc-detail-row"><Users size={11} strokeWidth={2}/>{tc.teamSize} players per side needed</div>
+                        </div>
+                        {reqSent ? (
+                          <div>
+                            <div style={{fontSize:11,color:"var(--ink3)",fontWeight:600,marginBottom:8}}>📩 Challenge request received:</div>
+                            <div className="tc-captain-row">
+                              <div className="tc-captain-av">M</div>
+                              <div>
+                                <div className="tc-captain-name">Maaz's Team</div>
+                                <div className="tc-phone">📞 {tc.phone} · Tap to call before accepting</div>
+                              </div>
+                            </div>
+                            <div className="tc-accept-row">
+                              <button className="tc-reject"
+                                onClick={()=>{setTeamReqs(p=>({...p,[reqKey]:false}));showToast("Challenge declined");}}>
+                                Decline
+                              </button>
+                              <button className="tc-accept"
+                                onClick={()=>{showToast("Challenge accepted! Contact them to confirm.");}}>
+                                <Check size={13} strokeWidth={2.5}/> Accept Challenge
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <div className="tc-captain-row" style={{marginBottom:0}}>
+                              <div className="tc-captain-av">{tc.captain[0]}</div>
+                              <div>
+                                <div className="tc-captain-name">Captain: {tc.captain}</div>
+                                <div className="tc-phone">Contact shown after acceptance</div>
+                              </div>
+                            </div>
+                            <div style={{height:10}}/>
+                            <button className="tc-challenge-btn"
+                              onClick={()=>{setTeamReqs(p=>({...p,[reqKey]:true}));showToast("Challenge sent! Waiting for captain to respond.");}}>
+                              <Swords size={13} strokeWidth={2}/> Challenge This Team
+                            </button>
+                            <div className="tc-pending-note">
+                              <Shield size={10} strokeWidth={2}/> Captain's number revealed only after acceptance
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+                </div>
+              </div>
+
+              {/* PROFILE PANEL */}
+              <div style={{width:'20%',flexShrink:0,overflowY:'auto',minHeight:'calc(100svh - 72px)'}}>
+                <div className="screen active profile">
+            <div className="prof-head">
+              <div className="prof-glow"/>
+              <button className="prof-edit-btn"
+                onClick={()=>{setEditName(authUser?.name||"");setEditPhone(authUser?.phone||"");setEditCity(authUser?.city||"");setScreen("editProfile");}}>
+                Edit Profile
+              </button>
+              <div className="prof-av-wrap">
+                <div className="prof-av">
+                  <User size={30} color="#fff" strokeWidth={1.5}/>
+                </div>
+                <div className="prof-av-badge">
+                  <Check size={11} color="#fff" strokeWidth={3}/>
+                </div>
+              </div>
+              <div className="prof-name">{authUser?.name || "Player"}</div>
+              <div className="prof-sub">{authUser?.city || "Pakistan"} · {authUser?.role === "owner" ? "Ground Owner" : "Player"}</div>
+            </div>
+            <div style={{height:14}}/>
+            <div className="prof-body">
+              <div className="stat-row">
+                {[
+                  [bookingHistoryLoading ? "…" : String(bookingHistory.length), "Bookings"],
+                  ["0","Sports"],
+                  ["0","Matches"]
+                ].map(([n,l])=>(
+                  <div key={l} className="stat-card">
+                    <div className="stat-n">{n}</div>
+                    <div className="stat-l">{l}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="prof-section-head">
+                <div className="prof-section-title">My Bookings</div>
+                {bookingHistory.length > 0 && (
+                  <div className="prof-section-count">{bookingHistory.length}</div>
+                )}
+              </div>
+              {bookingHistoryLoading ? (
+                <div className="bh-loading" style={{padding:"18px 0"}}>
+                  <RefreshCw size={14} color="var(--ink4)" strokeWidth={2}/> Loading…
+                </div>
+              ) : bookingHistory.length === 0 ? (
+                <div className="prof-bookings-empty">
+                  <Calendar size={20} color="var(--ink4)" strokeWidth={1.5}/>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:700,color:"var(--ink2)"}}>No bookings yet</div>
+                    <div style={{fontSize:11,color:"var(--ink4)",marginTop:2}}>Book a ground to see it here</div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
+                  {bookingHistory.map((b, i) => {
+                    const groundName = b.courts?.grounds?.name || b.courts?.name || "Ground";
+                    const courtLabel = b.courts?.name && b.courts.name !== groundName ? ` · ${b.courts.name}` : "";
+                    const statusCls  = b.status === "confirmed" ? "confirmed" : b.status === "cancelled" ? "cancelled" : "pending";
+                    return (
+                      <div key={b.id || i} className="bh-card">
+                        <div className="bh-card-top">
+                          <div className="bh-ground">{groundName}{courtLabel}</div>
+                          <div className={`bh-status ${statusCls}`}>{b.status || "confirmed"}</div>
+                        </div>
+                        <div className="bh-meta">
+                          <div className="bh-meta-item">
+                            <Calendar size={11} strokeWidth={2.5}/>{b.booking_date}
+                          </div>
+                          <div className="bh-meta-item">
+                            <Clock size={11} strokeWidth={2.5}/>{b.start_time} – {b.end_time}
+                          </div>
+                        </div>
+                        <div className="bh-divider"/>
+                        <div className="bh-bottom">
+                          <div className="bh-ref">{b.booking_ref || "—"}</div>
+                          <div className="bh-price">Rs {(b.total_price || 0).toLocaleString()}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="prof-list">
+                {[
+                  {I:UserPlus, bg:"#FEF3C7", c:"#D97706", t:"Matchmaking History", s:"Games joined or hosted", action:null},
+                  {I:Heart,    bg:"#FCE7F3", c:"#DB2777", t:"Favourite Grounds",   s:"Your saved venues",      action:null},
+                  {I:Bell,     bg:"#DCFCE7", c:"#16A34A", t:"Notifications",       s:"Booking alerts & requests", action:null},
+                ].map((r,i)=>(
+                  <div key={i} className="prof-row" onClick={r.action || undefined}>
+                    <div className="prof-row-ico" style={{background:r.bg}}>
+                      <r.I size={17} color={r.c} strokeWidth={2}/>
+                    </div>
+                    <div>
+                      <div className="prof-row-t">{r.t}</div>
+                      <div className="prof-row-s">{r.s}</div>
+                    </div>
+                    <div className="prof-row-arr"><ChevronRight size={16} strokeWidth={2}/></div>
+                  </div>
+                ))}
+                <div className="dm-section">
+                  <div className="dm-row">
+                    <div className="dm-row-left">
+                      <div className="dm-row-ico" style={{background:"#F3F4F6"}}>
+                        <SlidersHorizontal size={17} color="#4B5563" strokeWidth={2}/>
+                      </div>
+                      <div>
+                        <div className="dm-row-t">Dark mode</div>
+                        <div className="dm-row-s">Override theme manually</div>
+                      </div>
+                    </div>
+                    <button
+                      className={`dm-toggle ${darkMode ? 'on' : 'off'}`}
+                      onClick={() => { if (!autoDarkMode) setDarkMode(d => !d); }}
+                      style={autoDarkMode ? {opacity:.4,pointerEvents:'none'} : {}}
+                    />
+                  </div>
+                  <div className="dm-row">
+                    <div className="dm-row-left">
+                      <div className="dm-row-ico" style={{background:"#EFF6FF"}}>
+                        <Clock size={17} color="#3B82F6" strokeWidth={2}/>
+                      </div>
+                      <div>
+                        <div className="dm-row-t">Auto dark mode</div>
+                        <div className="dm-row-s">Dark after 6 PM · Light after 6 AM</div>
+                      </div>
+                    </div>
+                    <button
+                      className={`dm-toggle ${autoDarkMode ? 'on' : 'off'}`}
+                      onClick={() => setAutoDarkMode(a => !a)}
+                    />
+                  </div>
+                  <div className="dm-note">Auto mode overrides the manual toggle above.</div>
+                </div>
+                <div className="prof-row" style={{marginTop:8}} onClick={handleLogout}>
+                  <div className="prof-row-ico" style={{background:"#FEF2F2"}}>
+                    <ArrowLeft size={17} color="#DC2626" strokeWidth={2}/>
+                  </div>
+                  <div>
+                    <div className="prof-row-t" style={{color:"#DC2626"}}>Sign Out</div>
+                    <div className="prof-row-s">{session?.user?.email}</div>
+                  </div>
+                  <div className="prof-row-arr"><ChevronRight size={16} strokeWidth={2}/></div>
+                </div>
+              </div>
+            </div>
+                </div>
               </div>
             </div>
           </div>
@@ -2914,20 +3346,9 @@ export default function Outfield() {
           </div>
         )}
 
-        {/* ═══ MAP ═══ */}
-        {screen === "map" && (
-          <div className={`map-screen ${slideDirection === 'right' ? 'slide-from-right' : 'slide-from-left'}`}>
-            <MapScreen
-              grounds={dbGrounds.length > 0 ? dbGrounds : GROUNDS}
-              darkMode={darkMode}
-              onBookGround={(g) => { setGround(g); setScreen("ground"); }}
-            />
-          </div>
-        )}
-
-        {/* ═══ MATCHMAKING ═══ */}
-        {screen === "match" && (
-          <div className={`screen active match ${slideDirection === 'right' ? 'slide-from-right' : 'slide-from-left'}`}>
+        {/* MAP + MATCH — rendered inside tab strip above */}
+        {false && (
+          <div>
             <div className="match-head">
               <div className="match-glow"/>
               <div className="match-title" style={{display:"flex",alignItems:"center",gap:9}}>
@@ -3095,9 +3516,9 @@ export default function Outfield() {
           </div>
         )}
 
-        {/* ═══ EXPLORE ═══ */}
-        {screen === "explore" && (
-          <div className={`screen active explore ${slideDirection === 'right' ? 'slide-from-right' : 'slide-from-left'}`}>
+        {/* EXPLORE — rendered inside tab strip above */}
+        {false && (
+          <div>
             <div className="exp-head">
               <div className="exp-title" style={{display:"flex",alignItems:"center",gap:9}}>
                 <div style={{width:34,height:34,borderRadius:10,background:"rgba(255,255,255,.08)",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -3825,9 +4246,9 @@ export default function Outfield() {
           </div>
         )}
 
-        {/* ═══ PROFILE ═══ */}
-        {screen === "profile" && (
-          <div className={`screen active profile ${slideDirection === 'right' ? 'slide-from-right' : 'slide-from-left'}`}>
+        {/* PROFILE — rendered inside tab strip above */}
+        {false && (
+          <div>
             <div className="prof-head">
               <div className="prof-glow"/>
               <button className="prof-edit-btn"
