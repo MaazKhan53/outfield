@@ -1131,6 +1131,24 @@ input,select,textarea{font-size:16px !important;}
 .bh-ref{font-size:10px;color:var(--ink4);font-weight:600;font-family:'Sora',sans-serif;}
 .bh-price{font-family:'Sora',sans-serif;font-size:16px;font-weight:900;color:var(--green-d);}
 .bh-loading{display:flex;align-items:center;justify-content:center;padding:40px;color:var(--ink4);font-size:13px;gap:8px;}
+.bh-cancel-btn{font-size:11px;font-weight:700;color:#DC2626;background:#FEF2F2;border:1px solid #FECACA;border-radius:100px;padding:4px 12px;cursor:pointer;font-family:'Inter',sans-serif;}
+
+/* ── CANCEL DIALOG ── */
+.cancel-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:flex-end;justify-content:center;}
+.cancel-sheet{background:#fff;border-radius:22px 22px 0 0;padding:24px 22px 44px;width:100%;max-width:430px;}
+.cancel-title{font-family:'Sora',sans-serif;font-size:17px;font-weight:900;color:var(--ink);margin-bottom:6px;}
+.cancel-sub{font-size:12px;color:var(--ink4);margin-bottom:22px;line-height:1.55;}
+.cancel-actions{display:flex;gap:10px;}
+.cancel-no{flex:1;background:var(--bg);border:1.5px solid var(--border);color:var(--ink);border-radius:13px;padding:13px;font-size:14px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}
+.cancel-yes{flex:1;background:#EF4444;border:none;color:#fff;border-radius:13px;padding:13px;font-size:14px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}
+
+/* ── PROFILE EDIT BTN ── */
+.prof-edit-btn{position:absolute;top:56px;right:18px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.8);font-size:11px;font-weight:700;border-radius:100px;padding:5px 13px;cursor:pointer;font-family:'Inter',sans-serif;}
+
+/* ── STATUS TOGGLE ── */
+.status-toggle{display:flex;align-items:center;gap:5px;padding:5px 13px;border-radius:100px;border:none;font-size:11px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;transition:all .2s;}
+.status-toggle.live{background:#DCFCE7;color:#15803D;}
+.status-toggle.paused{background:#FEF3C7;color:#D97706;}
 `;
 
 /* ─── ICON HELPERS ─── */
@@ -1182,6 +1200,12 @@ export default function Outfield() {
   const [ownerBookings, setOwnerBookings]     = useState([]);
   const [ownerDashLoading, setOwnerDashLoading] = useState(false);
   const [ownerDashTab, setOwnerDashTab]       = useState("grounds");
+  const [cancelConfirmId, setCancelConfirmId] = useState(null);
+  const [editProfileSaving, setEditProfileSaving] = useState(false);
+  const [editName, setEditName]               = useState("");
+  const [editPhone, setEditPhone]             = useState("");
+  const [editCity, setEditCity]               = useState("");
+  const [ratingComment, setRatingComment]     = useState("");
   const MAX_BOOKINGS = 2;
   const [dbGrounds, setDbGrounds]             = useState([]);
   const [bookedSlotKeys, setBookedSlotKeys]   = useState(new Set());
@@ -1435,6 +1459,67 @@ export default function Outfield() {
     showToast("Logged out successfully");
   };
 
+  // Feature 2 — cancel booking
+  const handleCancelBooking = async (id) => {
+    await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', id);
+    setBookingHistory(prev => prev.map(b => b.id === id ? {...b, status: 'cancelled'} : b));
+    setCancelConfirmId(null);
+    showToast("Booking cancelled");
+  };
+
+  // Feature 3 — save profile edits
+  const handleSaveProfile = async () => {
+    if (!editName.trim()) return;
+    setEditProfileSaving(true);
+    await supabase.from('users').update({ name: editName, phone: editPhone, city: editCity })
+      .eq('id', session.user.id);
+    setAuthUser(prev => ({...prev, name: editName, phone: editPhone, city: editCity}));
+    setEditProfileSaving(false);
+    setScreen("profile");
+    showToast("Profile updated!");
+  };
+
+  // Feature 4 — submit review to Supabase
+  const handleSubmitRating = async () => {
+    setRatingDone(true);
+    setRatingModal(false);
+    showToast("Thanks for your rating!");
+    if (session?.user && ground?.id && typeof ground.id === 'string' && ground.id.includes('-')) {
+      await supabase.from('reviews').insert({
+        ground_id: ground.id,
+        player_id: session.user.id,
+        rating: ratingVal,
+        comment: ratingComment || null
+      });
+      const { data: allReviews } = await supabase
+        .from('reviews').select('rating').eq('ground_id', ground.id);
+      if (allReviews && allReviews.length > 0) {
+        const avg = allReviews.reduce((s, r) => s + r.rating, 0) / allReviews.length;
+        await supabase.from('grounds').update({ rating: Math.round(avg * 10) / 10 }).eq('id', ground.id);
+      }
+    }
+    setRatingComment("");
+  };
+
+  // Feature 5 — toggle ground live/paused
+  const handleToggleGroundStatus = async (g) => {
+    const newStatus = g.status === 'live' ? 'paused' : 'live';
+    await supabase.from('grounds').update({ status: newStatus }).eq('id', g.id);
+    setOwnerGrounds(prev => prev.map(og => og.id === g.id ? {...og, status: newStatus} : og));
+    showToast(newStatus === 'live' ? "Ground is now live!" : "Ground paused");
+  };
+
+  // Helper: is booking_date today or future?
+  const isFutureBooking = (dateStr) => {
+    const months = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+    const parts = (dateStr || '').split(' ');
+    if (parts.length < 2) return true;
+    const d = new Date(new Date().getFullYear(), months[parts[0]] ?? 0, parseInt(parts[1]) || 1);
+    d.setHours(0,0,0,0);
+    const today = new Date(); today.setHours(0,0,0,0);
+    return d >= today;
+  };
+
   const handleConfirmBooking = async () => {
     if (!curSlot || !ground) return;
     setBookingCount(p => p + 1);
@@ -1502,17 +1587,27 @@ export default function Outfield() {
 
   const openGround = (g) => {
     setGround(g); setCourt(null); setSlot(null); setLfp(false); setScreen("detail");
-    // Fetch already booked slots for this ground's courts
+    setBookedSlotKeys(new Set());
+    // Fetch confirmed bookings for this ground's courts only
     if (g.id && typeof g.id === 'string' && g.id.includes('-')) {
       supabase
-        .from('bookings')
-        .select('court_id, booking_date, start_time')
-        .eq('status', 'confirmed')
-        .then(({ data }) => {
-          if (data) {
-            const keys = new Set(data.map(b => `${b.court_id}_${b.booking_date}_${b.start_time}`));
-            setBookedSlotKeys(keys);
-          }
+        .from('courts')
+        .select('id')
+        .eq('ground_id', g.id)
+        .then(({ data: courts }) => {
+          const courtIds = (courts || []).map(c => c.id);
+          if (courtIds.length === 0) return;
+          supabase
+            .from('bookings')
+            .select('court_id, booking_date, start_time')
+            .eq('status', 'confirmed')
+            .in('court_id', courtIds)
+            .then(({ data }) => {
+              if (data) {
+                const keys = new Set(data.map(b => `${b.court_id}_${b.booking_date}_${b.start_time}`));
+                setBookedSlotKeys(keys);
+              }
+            });
         });
     }
   };
@@ -1661,11 +1756,13 @@ export default function Outfield() {
               </div>
               {ratingVal > 0 && (
                 <textarea className="rating-textarea"
+                  value={ratingComment}
+                  onChange={e=>setRatingComment(e.target.value)}
                   placeholder={ratingVal>=4 ? "What did you love? (optional)" : "What could be improved? (optional)"}/>
               )}
               <button className="rating-submit" disabled={ratingVal===0}
                 style={ratingVal===0?{opacity:.4,cursor:"not-allowed"}:{}}
-                onClick={()=>{setRatingDone(true);setRatingModal(false);showToast("Thanks for your rating! ⭐");}}>
+                onClick={handleSubmitRating}>
                 Submit Rating
               </button>
               <button className="rating-skip" onClick={()=>setRatingModal(false)}>Skip for now</button>
@@ -1900,9 +1997,11 @@ export default function Outfield() {
                         <div className={`odash-ground-status ${g.status || "pending"}`}>
                           {g.status || "pending"}
                         </div>
-                        <div style={{fontSize:11,color:"var(--ink4)",fontWeight:600}}>
-                          {g.open_from || "—"} – {g.open_till || "—"}
-                        </div>
+                        <button
+                          className={`status-toggle ${g.status === 'live' ? 'live' : 'paused'}`}
+                          onClick={()=>handleToggleGroundStatus(g)}>
+                          {g.status === 'live' ? '⏸ Pause' : '▶ Go Live'}
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -2285,7 +2384,11 @@ export default function Outfield() {
                   <div className="sl"><div className="sl-sq" style={{background:"#FCA5A5"}}/>Booked</div>
                   <div className="sl"><div className="sl-sq" style={{background:"var(--orange)"}}/>Need Players</div>
                   <div style={{marginLeft:"auto",fontSize:10,color:"var(--green-d)",fontWeight:700}}>
-                    {getSlots(ground,date).filter(s=>!s.booked).length} free
+                    {getSlots(ground,date).filter(s=>{
+                      const cId = ground?.isFacility ? court?.id : null;
+                      const sf = s.time?.split("–")[0]||"";
+                      return !s.booked && !bookedSlotKeys.has(`${cId}_${date}_${sf}`);
+                    }).length} free
                   </div>
                 </div>
                 <div className="late-badge" style={{marginBottom:10}}>
@@ -2293,21 +2396,27 @@ export default function Outfield() {
                 </div>
                 <div className="slots-grid">
                   {getSlots(ground,date).map((s,i)=>{
-                    const isLfp = s.booked&&s.lfp;
+                    // Check both static data and live DB booked keys
+                    const courtIdForKey = ground?.isFacility ? court?.id : null;
+                    const slotFrom = s.time?.split("–")[0] || "";
+                    const dbKey = `${courtIdForKey}_${date}_${slotFrom}`;
+                    const isDbBooked = bookedSlotKeys.has(dbKey);
+                    const effectiveBooked = s.booked || isDbBooked;
+                    const isLfp = effectiveBooked && s.lfp && !isDbBooked;
                     const jk = `d-${ground.id}-${date}-${i}`;
                     const jnd = joined[jk];
                     const spotsLeft = Math.max(0,(s.need||0)-(s.joined||0)-(jnd?1:0));
                     return (
                       <div key={i}
-                        className={`slot-card ${isLfp?"lfp":s.booked?"bkd":"free"} ${slot===i?"sel":""}`}
-                        onClick={()=>{if(!s.booked)setSlot(slot===i?null:i);}}>
+                        className={`slot-card ${isLfp?"lfp":effectiveBooked?"bkd":"free"} ${slot===i?"sel":""}`}
+                        onClick={()=>{if(!effectiveBooked)setSlot(slot===i?null:i);}}>
                         <div className="slot-time">{s.time}</div>
-                        <div className="slot-status" style={{color:isLfp?"var(--orange)":s.booked?"var(--ink4)":"var(--green)"}}>
+                        <div className="slot-status" style={{color:isLfp?"var(--orange)":effectiveBooked?"var(--ink4)":"var(--green)"}}>
                           {isLfp ? (
                             <span style={{display:"flex",alignItems:"center",gap:3}}>
                               <UserPlus size={10} strokeWidth={2}/>Need Players
                             </span>
-                          ) : s.booked ? (
+                          ) : effectiveBooked ? (
                             <span style={{display:"flex",alignItems:"center",gap:3}}>
                               <X size={10} strokeWidth={2.5}/>Booked
                             </span>
@@ -3278,6 +3387,19 @@ export default function Outfield() {
         {/* ═══ BOOKING HISTORY ═══ */}
         {screen === "bookingHistory" && (
           <div className="screen active fade" style={{background:"var(--bg)",overflowY:"auto",paddingBottom:88,minHeight:"100svh"}}>
+            {/* Cancel confirmation dialog */}
+            {cancelConfirmId && (
+              <div className="cancel-overlay" onClick={e=>{if(e.target.className==="cancel-overlay")setCancelConfirmId(null);}}>
+                <div className="cancel-sheet">
+                  <div className="cancel-title">Cancel this booking?</div>
+                  <div className="cancel-sub">This action cannot be undone. The slot will become available to other players.</div>
+                  <div className="cancel-actions">
+                    <button className="cancel-no" onClick={()=>setCancelConfirmId(null)}>Keep it</button>
+                    <button className="cancel-yes" onClick={()=>handleCancelBooking(cancelConfirmId)}>Yes, cancel</button>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="bh-head">
               <div className="bh-back" onClick={()=>setScreen("profile")}>
                 <ArrowLeft size={18} color="#fff" strokeWidth={2.5}/>
@@ -3302,6 +3424,7 @@ export default function Outfield() {
                 const groundName = b.courts?.grounds?.name || b.courts?.name || "Ground";
                 const courtName  = b.courts?.name || null;
                 const statusCls  = b.status === "confirmed" ? "confirmed" : b.status === "cancelled" ? "cancelled" : "pending";
+                const canCancel  = b.status === "confirmed" && isFutureBooking(b.booking_date);
                 return (
                   <div key={b.id || i} className="bh-card">
                     <div className="bh-card-top">
@@ -3321,11 +3444,52 @@ export default function Outfield() {
                     <div className="bh-divider"/>
                     <div className="bh-bottom">
                       <div className="bh-ref">{b.booking_ref || "—"}</div>
-                      <div className="bh-price">Rs {(b.total_price || 0).toLocaleString()}</div>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        {canCancel && (
+                          <button className="bh-cancel-btn" onClick={()=>setCancelConfirmId(b.id)}>
+                            Cancel
+                          </button>
+                        )}
+                        <div className="bh-price">Rs {(b.total_price || 0).toLocaleString()}</div>
+                      </div>
                     </div>
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* ═══ EDIT PROFILE ═══ */}
+        {screen === "editProfile" && (
+          <div className="screen active fade" style={{background:"var(--bg)",overflowY:"auto",paddingBottom:88,minHeight:"100svh"}}>
+            <div className="bh-head">
+              <div className="bh-back" onClick={()=>setScreen("profile")}>
+                <ArrowLeft size={18} color="#fff" strokeWidth={2.5}/>
+              </div>
+              <div className="bh-title">Edit Profile</div>
+            </div>
+            <div style={{padding:"20px 18px",display:"flex",flexDirection:"column",gap:14}}>
+              <div className="fg">
+                <label className="flbl">Full Name <span style={{color:"var(--red)"}}>*</span></label>
+                <input className="finput" placeholder="Your full name" value={editName} onChange={e=>setEditName(e.target.value)}/>
+              </div>
+              <div className="fg">
+                <label className="flbl">Phone Number</label>
+                <input className="finput" type="tel" placeholder="03XX-XXXXXXX" value={editPhone} onChange={e=>setEditPhone(e.target.value)}/>
+              </div>
+              <div className="fg">
+                <label className="flbl">City</label>
+                <select className="finput" style={{cursor:"pointer"}} value={editCity} onChange={e=>setEditCity(e.target.value)}>
+                  <option value="">Select city</option>
+                  {PAKISTAN_CITIES.map(c=><option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <button className="book-btn" style={{marginTop:6}}
+                disabled={!editName.trim() || editProfileSaving}
+                onClick={handleSaveProfile}>
+                {editProfileSaving ? "Saving…" : "Save Changes"}
+              </button>
             </div>
           </div>
         )}
@@ -3335,6 +3499,10 @@ export default function Outfield() {
           <div className="screen active profile fade">
             <div className="prof-head">
               <div className="prof-glow"/>
+              <button className="prof-edit-btn"
+                onClick={()=>{setEditName(authUser?.name||"");setEditPhone(authUser?.phone||"");setEditCity(authUser?.city||"");setScreen("editProfile");}}>
+                Edit Profile
+              </button>
               <div className="prof-av-wrap">
                 <div className="prof-av">
                   <User size={30} color="#fff" strokeWidth={1.5}/>
