@@ -1519,25 +1519,25 @@ export default function Outfield() {
   const [date, setDate]       = useState(DATES[0]);
   const touchStartX           = useRef(null);
   const touchStartY           = useRef(null);
+  const swipeIgnored          = useRef(false);
 
   // Tab order for swipe navigation
   const TAB_ORDER = ["home","explore","map","match","profile"];
 
   const handleTouchStart = (e) => {
+    swipeIgnored.current = !!e.target.closest('[data-swipe-ignore]');
     touchStartX.current = e.touches[0].clientX;
     touchStartY.current = e.touches[0].clientY;
   };
 
   const handleTouchEnd = (e) => {
+    if (swipeIgnored.current) { swipeIgnored.current = false; return; }
+    const mainTabScreens = ['home','explore','match','profile'];
+    if (!mainTabScreens.includes(screen)) return;
     if(touchStartX.current === null) return;
     const dx = e.changedTouches[0].clientX - touchStartX.current;
     const dy = e.changedTouches[0].clientY - touchStartY.current;
-    // Require a much stronger horizontal intent — dx must be large AND
-    // clearly more horizontal than vertical (ratio > 2.5:1)
-    // This prevents conflict with horizontal scroll areas like sport chips
-    if(Math.abs(dx) > 90 && Math.abs(dx) > Math.abs(dy) * 2.5) {
-      const mainScreens = ["home","explore","map","match","profile"];
-      if(!mainScreens.includes(screen)) return;
+    if(Math.abs(dx) > 110 && Math.abs(dx) > Math.abs(dy) * 3.5) {
       const idx = TAB_ORDER.indexOf(nav);
       if(dx < 0 && idx < TAB_ORDER.length - 1) {
         goNav(TAB_ORDER[idx + 1]);
@@ -2388,8 +2388,8 @@ export default function Outfield() {
                   See all <ChevronRight size={13} strokeWidth={2.5}/>
                 </div>
               </div>
-              <div className="hero-scroll-wrap">
-                <div className="hero-scroll">
+              <div className="hero-scroll-wrap" data-swipe-ignore="true">
+                <div className="hero-scroll" data-swipe-ignore="true">
                   {[...featGrounds, ...featGrounds].map((g,i) => {
                     return (
                       <div key={i} className="hero-card" onClick={()=>openGround(g)}>
@@ -2418,7 +2418,7 @@ export default function Outfield() {
 
             {/* Sport Filter */}
             <div className="sport-section">
-              <div className="sport-scroll">
+              <div className="sport-scroll" data-swipe-ignore="true">
                 {SPORTS.map(s=>{
                   const on = sport===s.id;
                   return (
@@ -2651,7 +2651,7 @@ export default function Outfield() {
                   <div className="map-block-s">Tap to open Google Maps</div>
                 </div>
                 <div className="detail-sec">Select Date</div>
-                <div className="date-row">
+                <div className="date-row" data-swipe-ignore="true">
                   {DATES.map(d=>(
                     <button key={d} className={`date-btn ${date===d?"on":""}`}
                       onClick={()=>{setDate(d);setSlot(null);}}>{d}</button>
@@ -3099,7 +3099,7 @@ export default function Outfield() {
             </div>
             <div style={{height:14}}/>
             <div className="sport-section" style={{paddingBottom:8}}>
-              <div className="sport-scroll">
+              <div className="sport-scroll" data-swipe-ignore="true">
                 {SPORTS.map(s=>{
                   const on=sport===s.id;
                   return (
