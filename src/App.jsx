@@ -1292,6 +1292,53 @@ input,select,textarea{font-size:16px !important;}
 .map-popup-rating{display:flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:var(--ink);}
 .map-popup-price{font-size:12px;color:var(--ink3);font-weight:600;}
 .map-popup-book{width:100%;background:var(--green-d);color:#fff;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:800;cursor:pointer;font-family:'Inter',sans-serif;}
+
+/* ── FORGOT PASSWORD ── */
+.forgot-link{font-size:11px;font-weight:700;color:var(--blue);cursor:pointer;text-decoration:underline;}
+.forgot-panel{background:#EFF6FF;border:1px solid #BFDBFE;border-radius:12px;padding:14px;margin-bottom:4px;}
+.forgot-panel-title{font-size:12px;font-weight:800;color:#1E40AF;margin-bottom:10px;}
+.forgot-sent{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--green-d);}
+.forgot-cancel{flex:1;background:var(--border2);border:1px solid var(--border);border-radius:10px;padding:9px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;color:var(--ink3);}
+.forgot-submit{flex:2;background:var(--blue);border:none;border-radius:10px;padding:9px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;color:#fff;}
+.forgot-submit:disabled{opacity:.4;cursor:not-allowed;}
+
+/* ── SHARE BOOKING BUTTON ── */
+.share-booking-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;background:transparent;border:1.5px solid var(--border);border-radius:14px;padding:12px;font-size:13px;font-weight:700;color:var(--ink3);cursor:pointer;font-family:'Inter',sans-serif;margin-top:10px;}
+.share-booking-btn:active{background:var(--border2);}
+
+/* ── REVENUE TRACKER ── */
+.rev-tracker-row{display:flex;gap:8px;padding:0 18px 14px;}
+.rev-card{flex:1;background:rgba(255,255,255,.12);border-radius:12px;padding:10px 8px;text-align:center;border:1px solid rgba(255,255,255,.08);}
+.rev-label{font-size:10px;font-weight:700;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;}
+.rev-val{font-size:13px;font-weight:800;color:#fff;}
+
+/* ── OWNER REGISTER ── */
+.reg-header{padding:0 0 14px;}
+.reg-empty{display:flex;flex-direction:column;align-items:center;padding:40px 0;color:var(--ink4);}
+.reg-table{border-radius:12px;overflow:hidden;border:1px solid var(--border);margin-bottom:14px;}
+.reg-row{display:flex;align-items:stretch;}
+.reg-row-head{background:#F8FAFC;border-bottom:1.5px solid var(--border);}
+.reg-row.even{background:#fff;}
+.reg-row.odd{background:#F9FAFB;}
+.reg-col{padding:10px 8px;font-size:11px;color:var(--ink3);}
+.reg-col-time{width:60px;flex-shrink:0;border-right:1px solid var(--border2);}
+.reg-col-ground{flex:1.2;border-right:1px solid var(--border2);}
+.reg-col-player{flex:1.5;border-right:1px solid var(--border2);}
+.reg-col-price{flex:1;text-align:right;}
+.reg-row-head .reg-col{font-size:10px;font-weight:800;color:var(--ink3);text-transform:uppercase;letter-spacing:.5px;}
+.reg-status{font-size:9px;font-weight:700;padding:2px 6px;border-radius:100px;display:inline-block;margin-top:3px;}
+.reg-status.confirmed{background:var(--green-l);color:var(--green-d);}
+.reg-status.cancelled{background:#FEF2F2;color:#DC2626;}
+.reg-status.pending{background:#FFF7ED;color:#D97706;}
+.reg-totals{background:var(--card);border-radius:12px;border:1px solid var(--border);padding:12px 14px;display:flex;flex-direction:column;gap:8px;}
+.reg-total-row{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--ink3);}
+.app.dark .reg-row-head{background:#1E293B !important;}
+.app.dark .reg-row.even{background:#111827 !important;}
+.app.dark .reg-row.odd{background:#0F172A !important;}
+.app.dark .reg-table{border-color:#1E293B !important;}
+.app.dark .reg-col{color:#94A3B8 !important;}
+.app.dark .reg-totals{background:#111827 !important;border-color:#1E293B !important;}
+.app.dark .reg-total-row{color:#94A3B8 !important;}
 `;
 
 /* ─── ICON HELPERS ─── */
@@ -1487,6 +1534,7 @@ export default function Outfield() {
   const [bookingCount, setBookingCount]       = useState(0);
   const [bookingHistory, setBookingHistory]   = useState([]);
   const [bookingHistoryLoading, setBookingHistoryLoading] = useState(false);
+  const [myBookings, setMyBookings]           = useState([]);
   const [ownerGrounds, setOwnerGrounds]       = useState([]);
   const [ownerBookings, setOwnerBookings]     = useState([]);
   const [ownerDashLoading, setOwnerDashLoading] = useState(false);
@@ -1499,6 +1547,15 @@ export default function Outfield() {
   const [editPhone, setEditPhone]             = useState("");
   const [editCity, setEditCity]               = useState("");
   const [ratingComment, setRatingComment]     = useState("");
+  const [showForgotPwd, setShowForgotPwd]     = useState(false);
+  const [forgotEmail, setForgotEmail]         = useState("");
+  const [forgotSent, setForgotSent]           = useState(false);
+  const [favGroundIds, setFavGroundIds]       = useState(new Set());
+  const [showFavScreen, setShowFavScreen]     = useState(false);
+  const [favGrounds, setFavGrounds]           = useState([]);
+  const [ownerRegDate, setOwnerRegDate]       = useState(() => new Date().toISOString().split('T')[0]);
+  const [ownerRegBookings, setOwnerRegBookings] = useState([]);
+  const [ownerRegLoading, setOwnerRegLoading]   = useState(false);
   const MAX_BOOKINGS = 2;
   const [dbGrounds, setDbGrounds]             = useState([]);
   const [bookedSlotKeys, setBookedSlotKeys]   = useState(new Set());
@@ -1632,7 +1689,7 @@ export default function Outfield() {
     setOwnerDashLoading(true);
     supabase
       .from('grounds')
-      .select('*, courts(id, bookings(id, status, total_price))')
+      .select('*, courts(id, bookings(id, status, total_price, booking_date))')
       .eq('owner_id', session.user.id)
       .order('created_at', { ascending: false })
       .then(({ data }) => {
@@ -1658,6 +1715,61 @@ export default function Outfield() {
         setBookingHistoryLoading(false);
       });
   }, [screen, session]);
+
+  useEffect(() => {
+    if (screen !== 'profile' || !session?.user) return;
+    supabase.from('bookings').select('*').eq('player_id', session.user.id).order('created_at', { ascending: false })
+      .then(({ data }) => { if (data) setMyBookings(data); });
+  }, [screen, session]);
+
+  // Load favourite ground IDs on login
+  useEffect(() => {
+    if (!session?.user) return;
+    supabase.from('favourites').select('ground_id').eq('user_id', session.user.id)
+      .then(({ data }) => { if (data) setFavGroundIds(new Set(data.map(f => f.ground_id))); });
+  }, [session]);
+
+  // Load favourite grounds list when fav screen opens
+  useEffect(() => {
+    if (!showFavScreen || !session?.user) return;
+    supabase
+      .from('favourites')
+      .select('ground_id, grounds(id, name, area, rating, img_url)')
+      .eq('user_id', session.user.id)
+      .then(({ data }) => {
+        if (data) setFavGrounds(data.map(f => f.grounds).filter(Boolean));
+      });
+  }, [showFavScreen, session]);
+
+  // Load owner register bookings
+  useEffect(() => {
+    if (screen !== 'owner' || !session?.user || authUser?.role !== 'owner') return;
+    setOwnerRegLoading(true);
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const [y, m, d] = ownerRegDate.split('-').map(Number);
+    const dateLabel = `${months[m-1]} ${d}`;
+    supabase
+      .from('courts')
+      .select('id, name, grounds!inner(id, name, owner_id)')
+      .eq('grounds.owner_id', session.user.id)
+      .then(async ({ data: courts }) => {
+        const courtIds = (courts || []).map(c => c.id);
+        if (courtIds.length === 0) { setOwnerRegBookings([]); setOwnerRegLoading(false); return; }
+        const { data: bks } = await supabase
+          .from('bookings')
+          .select('*, users!player_id(name, phone)')
+          .in('court_id', courtIds)
+          .eq('booking_date', dateLabel)
+          .order('start_time', { ascending: true });
+        const withCourt = (bks || []).map(b => ({
+          ...b,
+          courtName: courts.find(c => c.id === b.court_id)?.name || '—',
+          groundName: courts.find(c => c.id === b.court_id)?.grounds?.name || '—',
+        }));
+        setOwnerRegBookings(withCourt);
+        setOwnerRegLoading(false);
+      });
+  }, [screen, ownerRegDate, session, authUser]);
 
   useEffect(() => { localStorage.setItem('otf-dark', darkMode); }, [darkMode]);
   useEffect(() => { localStorage.setItem('otf-auto-dark', autoDarkMode); }, [autoDarkMode]);
@@ -1746,10 +1858,60 @@ export default function Outfield() {
     showToast("Logged out successfully");
   };
 
+  // Forgot password
+  const handleForgotPassword = async () => {
+    if (!forgotEmail.trim()) return;
+    await supabase.auth.resetPasswordForEmail(forgotEmail.trim());
+    setForgotSent(true);
+    showToast("Password reset email sent — check your inbox");
+  };
+
+  // Share booking
+  const handleShareBooking = async () => {
+    const text = `Booked ${ground?.name || "a ground"} on ${date} at ${curSlot?.time || "—"}. Join me! — Outfield`;
+    if (navigator.share) {
+      try { await navigator.share({ title: 'Outfield Booking', text, url: 'https://outfield-weld.vercel.app' }); }
+      catch (e) {}
+    } else {
+      navigator.clipboard?.writeText(text);
+      showToast("Copied to clipboard");
+    }
+  };
+
+  // Toggle favourite ground (Supabase)
+  /*
+    SQL to create favourites table:
+    CREATE TABLE favourites (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+      ground_id uuid NOT NULL REFERENCES grounds(id) ON DELETE CASCADE,
+      created_at timestamptz DEFAULT now(),
+      UNIQUE(user_id, ground_id)
+    );
+    ALTER TABLE favourites ENABLE ROW LEVEL SECURITY;
+    CREATE POLICY "Users manage own favourites" ON favourites
+      USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+  */
+  const handleToggleFav = async (groundId) => {
+    if (!session?.user) return;
+    const isFaved = favGroundIds.has(groundId);
+    if (isFaved) {
+      await supabase.from('favourites').delete().eq('user_id', session.user.id).eq('ground_id', groundId);
+      setFavGroundIds(prev => { const n = new Set(prev); n.delete(groundId); return n; });
+      setFavGrounds(prev => prev.filter(g => g.id !== groundId));
+      showToast("Removed from favourites");
+    } else {
+      await supabase.from('favourites').insert({ user_id: session.user.id, ground_id: groundId });
+      setFavGroundIds(prev => new Set([...prev, groundId]));
+      showToast("Added to favourites");
+    }
+  };
+
   // Feature 2 — cancel booking
   const handleCancelBooking = async (id) => {
     await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', id);
     setBookingHistory(prev => prev.map(b => b.id === id ? {...b, status: 'cancelled'} : b));
+    setMyBookings(prev => prev.map(b => b.id === id ? {...b, status: 'cancelled'} : b));
     setCancelConfirmId(null);
     showToast("Booking cancelled");
   };
@@ -2003,7 +2165,36 @@ export default function Outfield() {
               <div className="auth-field">
                 <label className="auth-label">Password *</label>
                 <input className="auth-input" placeholder={authMode==="signup"?"At least 6 characters":"Your password"} type="password" value={authPassword} onChange={e=>setAuthPassword(e.target.value)}/>
+                {authMode === "login" && (
+                  <div style={{textAlign:"right",marginTop:6}}>
+                    <span className="forgot-link" onClick={()=>{setShowForgotPwd(true);setForgotSent(false);setForgotEmail("");setAuthError("");}}>
+                      Forgot password?
+                    </span>
+                  </div>
+                )}
               </div>
+
+              {/* Forgot password panel */}
+              {showForgotPwd && authMode === "login" && (
+                <div className="forgot-panel">
+                  <div className="forgot-panel-title">Reset your password</div>
+                  {forgotSent ? (
+                    <div className="forgot-sent">
+                      <CheckCircle size={14} color="var(--green)" strokeWidth={2}/>
+                      Email sent! Check your inbox for the reset link.
+                    </div>
+                  ) : (
+                    <>
+                      <input className="auth-input" type="email" placeholder="Enter your email"
+                        value={forgotEmail} onChange={e=>setForgotEmail(e.target.value)}/>
+                      <div style={{display:"flex",gap:8,marginTop:8}}>
+                        <button className="forgot-cancel" onClick={()=>setShowForgotPwd(false)}>Cancel</button>
+                        <button className="forgot-submit" onClick={handleForgotPassword} disabled={!forgotEmail.trim()}>Send Reset Email</button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
 
               <button className="auth-submit" disabled={authLoading}
                 onClick={authMode==="signup" ? handleSignUp : handleLogin}>
@@ -2224,6 +2415,16 @@ export default function Outfield() {
         {authUser?.role === "owner" && (() => {
           const totalBookings = ownerBookings.length;
           const totalRevenue  = ownerBookings.reduce((s,b) => s + (b.total_price||0), 0);
+          // Revenue by date range (booking_date stored as "Apr 14" format)
+          const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+          const toLabel = (d) => `${months[d.getMonth()]} ${d.getDate()}`;
+          const todayLabel = toLabel(new Date());
+          const confirmedBks = ownerBookings.filter(b => b.status === 'confirmed');
+          const todayEarnings = confirmedBks.filter(b => b.booking_date === todayLabel).reduce((s,b)=>s+(b.total_price||0),0);
+          const weekDates = Array.from({length:7},(_,i)=>{ const d=new Date(); d.setDate(d.getDate()-i); return toLabel(d); });
+          const weekEarnings = confirmedBks.filter(b => weekDates.includes(b.booking_date)).reduce((s,b)=>s+(b.total_price||0),0);
+          const monthDates = Array.from({length:30},(_,i)=>{ const d=new Date(); d.setDate(d.getDate()-i); return toLabel(d); });
+          const monthEarnings = confirmedBks.filter(b => monthDates.includes(b.booking_date)).reduce((s,b)=>s+(b.total_price||0),0);
           return (
           <div style={{background:"var(--bg)",paddingBottom:88,minHeight:"100%"}}>
 
@@ -2246,7 +2447,22 @@ export default function Outfield() {
                   <div className="odash-stat-n" style={{fontSize:13}}>
                     {ownerDashLoading ? "…" : `Rs ${totalRevenue.toLocaleString()}`}
                   </div>
-                  <div className="odash-stat-l">Revenue</div>
+                  <div className="odash-stat-l">All-time</div>
+                </div>
+              </div>
+              {/* Revenue tracker */}
+              <div className="rev-tracker-row">
+                <div className="rev-card">
+                  <div className="rev-label">Today</div>
+                  <div className="rev-val">{ownerDashLoading ? "…" : todayEarnings > 0 ? `Rs ${todayEarnings.toLocaleString()}` : "—"}</div>
+                </div>
+                <div className="rev-card">
+                  <div className="rev-label">This Week</div>
+                  <div className="rev-val">{ownerDashLoading ? "…" : weekEarnings > 0 ? `Rs ${weekEarnings.toLocaleString()}` : "—"}</div>
+                </div>
+                <div className="rev-card">
+                  <div className="rev-label">This Month</div>
+                  <div className="rev-val">{ownerDashLoading ? "…" : monthEarnings > 0 ? `Rs ${monthEarnings.toLocaleString()}` : "—"}</div>
                 </div>
               </div>
             </div>
@@ -2821,6 +3037,19 @@ export default function Outfield() {
               {/* PROFILE PANEL */}
               <div style={{width:'20%',flexShrink:0,overflowY:'auto',minHeight:'calc(100svh - 72px)'}}>
                 <div className="screen active profile">
+            {/* Cancel confirmation dialog */}
+            {cancelConfirmId && (
+              <div className="cancel-overlay" onClick={e=>{if(e.target.className==="cancel-overlay")setCancelConfirmId(null);}}>
+                <div className="cancel-sheet">
+                  <div className="cancel-title">Cancel this booking?</div>
+                  <div className="cancel-sub">This action cannot be undone. The slot will become available to other players.</div>
+                  <div className="cancel-actions">
+                    <button className="cancel-no" onClick={()=>setCancelConfirmId(null)}>Keep it</button>
+                    <button className="cancel-yes" onClick={()=>handleCancelBooking(cancelConfirmId)}>Yes, cancel</button>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="prof-head">
               <div className="prof-glow"/>
               <button className="prof-edit-btn"
@@ -2842,7 +3071,7 @@ export default function Outfield() {
             <div className="prof-body">
               <div className="stat-row">
                 {[
-                  [bookingHistoryLoading ? "…" : String(bookingHistory.length), "Bookings"],
+                  [String(myBookings.length), "Bookings"],
                   ["0","Sports"],
                   ["0","Matches"]
                 ].map(([n,l])=>(
@@ -2854,15 +3083,11 @@ export default function Outfield() {
               </div>
               <div className="prof-section-head">
                 <div className="prof-section-title">My Bookings</div>
-                {bookingHistory.length > 0 && (
-                  <div className="prof-section-count">{bookingHistory.length}</div>
+                {myBookings.length > 0 && (
+                  <div className="prof-section-count">{myBookings.length}</div>
                 )}
               </div>
-              {bookingHistoryLoading ? (
-                <div className="bh-loading" style={{padding:"18px 0"}}>
-                  <RefreshCw size={14} color="var(--ink4)" strokeWidth={2}/> Loading…
-                </div>
-              ) : bookingHistory.length === 0 ? (
+              {myBookings.length === 0 ? (
                 <div className="prof-bookings-empty">
                   <Calendar size={20} color="var(--ink4)" strokeWidth={1.5}/>
                   <div>
@@ -2872,14 +3097,13 @@ export default function Outfield() {
                 </div>
               ) : (
                 <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
-                  {bookingHistory.map((b, i) => {
-                    const groundName = b.courts?.grounds?.name || b.courts?.name || "Ground";
-                    const courtLabel = b.courts?.name && b.courts.name !== groundName ? ` · ${b.courts.name}` : "";
-                    const statusCls  = b.status === "confirmed" ? "confirmed" : b.status === "cancelled" ? "cancelled" : "pending";
+                  {myBookings.map((b, i) => {
+                    const statusCls = b.status === "confirmed" ? "confirmed" : b.status === "cancelled" ? "cancelled" : "pending";
+                    const canCancel = b.status === "confirmed" && isFutureBooking(b.booking_date);
                     return (
                       <div key={b.id || i} className="bh-card">
                         <div className="bh-card-top">
-                          <div className="bh-ground">{groundName}{courtLabel}</div>
+                          <div className="bh-ground">{b.booking_ref || `Booking #${i+1}`}</div>
                           <div className={`bh-status ${statusCls}`}>{b.status || "confirmed"}</div>
                         </div>
                         <div className="bh-meta">
@@ -2893,7 +3117,12 @@ export default function Outfield() {
                         <div className="bh-divider"/>
                         <div className="bh-bottom">
                           <div className="bh-ref">{b.booking_ref || "—"}</div>
-                          <div className="bh-price">Rs {(b.total_price || 0).toLocaleString()}</div>
+                          <div style={{display:"flex",alignItems:"center",gap:8}}>
+                            {canCancel && (
+                              <button className="bh-cancel-btn" onClick={()=>setCancelConfirmId(b.id)}>Cancel</button>
+                            )}
+                            <div className="bh-price">Rs {(b.total_price || 0).toLocaleString()}</div>
+                          </div>
                         </div>
                       </div>
                     );
@@ -2903,7 +3132,7 @@ export default function Outfield() {
               <div className="prof-list">
                 {[
                   {I:UserPlus, bg:"#FEF3C7", c:"#D97706", t:"Matchmaking History", s:"Games joined or hosted", action:null},
-                  {I:Heart,    bg:"#FCE7F3", c:"#DB2777", t:"Favourite Grounds",   s:"Your saved venues",      action:null},
+                  {I:Heart,    bg:"#FCE7F3", c:"#DB2777", t:"Favourite Grounds",   s:favGroundIds.size > 0 ? `${favGroundIds.size} saved` : "Your saved venues", action:()=>setShowFavScreen(true)},
                   {I:Bell,     bg:"#DCFCE7", c:"#16A34A", t:"Notifications",       s:"Booking alerts & requests", action:null},
                 ].map((r,i)=>(
                   <div key={i} className="prof-row" onClick={r.action || undefined}>
@@ -2983,8 +3212,8 @@ export default function Outfield() {
                     <ArrowLeft size={18} strokeWidth={2}/>
                   </button>
                   <div className="dhero-actions-right">
-                    <button className="dhero-btn" onClick={()=>{setFaved(p=>({...p,[ground.id]:!p[ground.id]}));showToast(faved[ground.id]?"Removed from favourites":"Added to favourites");}}>
-                      <Heart size={16} strokeWidth={2} fill={faved[ground.id]?"#ef4444":"none"} color={faved[ground.id]?"#ef4444":"#fff"}/>
+                    <button className="dhero-btn" onClick={()=>handleToggleFav(ground.id)}>
+                      <Heart size={16} strokeWidth={2} fill={favGroundIds.has(ground.id)?"#ef4444":"none"} color={favGroundIds.has(ground.id)?"#ef4444":"#fff"}/>
                     </button>
                     <button className="dhero-btn" onClick={()=>showToast("Share link copied!")}>
                       <Share2 size={16} strokeWidth={2}/>
@@ -3332,6 +3561,9 @@ export default function Outfield() {
               onClick={()=>{setScreen("home");setNav("home");setGround(null);setSlot(null);setLfp(false);}}>
               Back to Home
             </button>
+            <button className="share-booking-btn" onClick={handleShareBooking}>
+              <Share2 size={15} strokeWidth={2}/> Share with teammates
+            </button>
             {!ratingDone && (
               <div style={{marginTop:10,background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}
                 onClick={()=>setRatingModal(true)}>
@@ -3650,6 +3882,9 @@ export default function Outfield() {
               </button>
               <button className={`owner-tab ${ownerSection==="manage"?"on":""}`} onClick={()=>setOwnerSection("manage")}>
                 <X size={13} strokeWidth={2}/> Block Slots
+              </button>
+              <button className={`owner-tab ${ownerSection==="register"?"on":""}`} onClick={()=>setOwnerSection("register")}>
+                <Calendar size={13} strokeWidth={2}/> Register
               </button>
             </div>
 
@@ -4132,6 +4367,82 @@ export default function Outfield() {
                   <span>Blocked slots are hidden from players instantly. They will see "Unavailable" if they try to access that time. Only you can unblock them.</span>
                 </div>
               </>)}
+
+              {/* ── REGISTER TAB ── */}
+              {ownerSection === "register" && (<>
+                <div className="reg-header">
+                  <div style={{fontSize:13,fontWeight:800,color:"var(--ink2)",marginBottom:6}}>Daily Booking Register</div>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <input
+                      type="date"
+                      className="finput"
+                      style={{flex:1,fontSize:13}}
+                      value={ownerRegDate}
+                      onChange={e=>setOwnerRegDate(e.target.value)}
+                    />
+                    <div style={{fontSize:11,color:"var(--ink4)",flexShrink:0,fontWeight:600}}>
+                      {(() => {
+                        const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+                        const [y,m,d] = ownerRegDate.split('-').map(Number);
+                        return `${months[m-1]} ${d}, ${y}`;
+                      })()}
+                    </div>
+                  </div>
+                </div>
+
+                {ownerRegLoading ? (
+                  <div className="bh-loading"><RefreshCw size={14} color="var(--ink4)" strokeWidth={2}/> Loading…</div>
+                ) : ownerRegBookings.length === 0 ? (
+                  <div className="reg-empty">
+                    <Calendar size={24} color="var(--ink4)" strokeWidth={1.5}/>
+                    <div style={{fontSize:12,fontWeight:700,color:"var(--ink3)",marginTop:8}}>No bookings on this date</div>
+                  </div>
+                ) : (<>
+                  {/* Register table */}
+                  <div className="reg-table">
+                    <div className="reg-row reg-row-head">
+                      <div className="reg-col reg-col-time">Time</div>
+                      <div className="reg-col reg-col-ground">Ground</div>
+                      <div className="reg-col reg-col-player">Player</div>
+                      <div className="reg-col reg-col-price">Amount</div>
+                    </div>
+                    {ownerRegBookings.map((b, i) => (
+                      <div key={b.id || i} className={`reg-row ${i % 2 === 0 ? "even" : "odd"}`}>
+                        <div className="reg-col reg-col-time">
+                          <div style={{fontWeight:700,fontSize:11}}>{b.start_time}</div>
+                          <div style={{fontSize:10,color:"var(--ink4)"}}>–{b.end_time}</div>
+                        </div>
+                        <div className="reg-col reg-col-ground">
+                          <div style={{fontWeight:600,fontSize:11,color:"var(--ink2)"}}>{b.groundName}</div>
+                          <div style={{fontSize:10,color:"var(--ink4)"}}>{b.courtName}</div>
+                        </div>
+                        <div className="reg-col reg-col-player">
+                          <div style={{fontWeight:600,fontSize:11,color:"var(--ink2)"}}>{b.users?.name || "—"}</div>
+                          <div style={{fontSize:10,color:"var(--ink4)"}}>{b.users?.phone || ""}</div>
+                          {b.player_count > 1 && <div style={{fontSize:10,color:"var(--ink4)"}}>{b.player_count} players</div>}
+                        </div>
+                        <div className="reg-col reg-col-price">
+                          <div style={{fontWeight:700,fontSize:12,color:"var(--green-d)"}}>Rs {(b.total_price||0).toLocaleString()}</div>
+                          <div className={`reg-status ${b.status}`}>{b.status}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Daily totals */}
+                  <div className="reg-totals">
+                    <div className="reg-total-row">
+                      <span>Total Bookings</span>
+                      <span style={{fontWeight:800}}>{ownerRegBookings.length}</span>
+                    </div>
+                    <div className="reg-total-row">
+                      <span>Total Revenue</span>
+                      <span style={{fontWeight:800,color:"var(--green-d)"}}>
+                        Rs {ownerRegBookings.filter(b=>b.status==="confirmed").reduce((s,b)=>s+(b.total_price||0),0).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                </>)}
+              </>)}
             </div>
           </div>
         )}
@@ -4398,6 +4709,52 @@ export default function Outfield() {
                   <div className="prof-row-arr"><ChevronRight size={16} strokeWidth={2}/></div>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ═══ FAVOURITE GROUNDS OVERLAY ═══ */}
+        {showFavScreen && (
+          <div style={{position:"fixed",inset:0,background:"var(--bg)",zIndex:900,overflowY:"auto",paddingBottom:88,maxWidth:430,margin:"0 auto"}}>
+            <div className="bh-head">
+              <div className="bh-back" onClick={()=>setShowFavScreen(false)}>
+                <ArrowLeft size={18} color="#fff" strokeWidth={2.5}/>
+              </div>
+              <div className="bh-title">Favourite Grounds</div>
+            </div>
+            <div style={{padding:"16px 18px"}}>
+              {favGrounds.length === 0 && favGroundIds.size === 0 ? (
+                <div className="bh-empty">
+                  <div className="bh-empty-ico"><Heart size={24} color="var(--ink4)" strokeWidth={1.5}/></div>
+                  <div className="bh-empty-t">No favourites yet</div>
+                  <div className="bh-empty-s">Tap the heart on any ground to save it here.</div>
+                </div>
+              ) : favGrounds.length === 0 ? (
+                <div className="bh-loading"><RefreshCw size={14} color="var(--ink4)" strokeWidth={2}/> Loading…</div>
+              ) : (
+                <div className="glist">
+                  {favGrounds.map(g => (
+                    <div key={g.id} className="gcard" onClick={()=>{setShowFavScreen(false);openGround({...g,sports:["cricket","football"],amenities:[],priceFrom:2000,distance:"—",openFrom:"06:00",openTill:"23:00",isFacility:false,courts:[],slots:{"default":[]}});}}>
+                      <div className="gcard-img-wrap">
+                        {g.img_url
+                          ? <img className="gcard-img" src={g.img_url} alt={g.name} onError={e=>{e.target.style.display="none";}}/>
+                          : <div className="gcard-img" style={{background:"#1a1a2e",display:"flex",alignItems:"center",justifyContent:"center"}}><MapPin size={28} color="rgba(255,255,255,.2)" strokeWidth={1.5}/></div>
+                        }
+                        <div className="gcard-overlay"/>
+                        <div className="gcard-bl">
+                          <div className="gcard-name">{g.name}</div>
+                          <div className="gcard-area"><MapPin size={9} color="rgba(255,255,255,.6)" strokeWidth={2}/>{g.area}</div>
+                        </div>
+                        {g.rating && <div className="gcard-tr"><div className="img-pill"><Star size={9} color="var(--amber)" fill="var(--amber)" strokeWidth={0}/> {g.rating}</div></div>}
+                        <button style={{position:"absolute",top:10,right:10,width:30,height:30,borderRadius:10,background:"rgba(0,0,0,.5)",border:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}
+                          onClick={e=>{e.stopPropagation();handleToggleFav(g.id);}}>
+                          <Heart size={14} fill="#ef4444" color="#ef4444" strokeWidth={2}/>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
