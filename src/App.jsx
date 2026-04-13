@@ -859,6 +859,10 @@ input,select,textarea{font-size:16px !important;}
 .stat-card{flex:1;background:#fff;border-radius:14px;padding:14px;text-align:center;box-shadow:var(--s1);border:1px solid rgba(0,0,0,.04);}
 .stat-n{font-family:'Sora',sans-serif;font-size:22px;font-weight:900;color:var(--green-d);}
 .stat-l{font-size:10px;color:var(--ink4);margin-top:2px;font-weight:600;}
+.prof-section-head{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+.prof-section-title{font-size:13px;font-weight:800;color:var(--ink);}
+.prof-section-count{font-size:10px;font-weight:700;color:var(--green-d);background:var(--green-l);border:1px solid var(--green);border-radius:100px;padding:2px 8px;}
+.prof-bookings-empty{display:flex;align-items:center;gap:12px;background:#fff;border-radius:13px;border:1px solid rgba(0,0,0,.04);padding:14px 16px;box-shadow:var(--s1);margin-bottom:20px;}
 .prof-list{display:flex;flex-direction:column;gap:9px;}
 .prof-row{background:#fff;border-radius:13px;padding:14px 16px;display:flex;align-items:center;gap:12px;border:1px solid rgba(0,0,0,.04);cursor:pointer;transition:all .2s;box-shadow:var(--s1);}
 .prof-row:hover{transform:translateX(3px);}
@@ -3516,17 +3520,74 @@ export default function Outfield() {
             </div>
             <div style={{height:14}}/>
             <div className="prof-body">
+              {/* ── Stats ── */}
               <div className="stat-row">
-                {[[String(bookingHistory.length),"Bookings"],["0","Sports"],["0","Matches"]].map(([n,l])=>(
+                {[
+                  [bookingHistoryLoading ? "…" : String(bookingHistory.length), "Bookings"],
+                  ["0","Sports"],
+                  ["0","Matches"]
+                ].map(([n,l])=>(
                   <div key={l} className="stat-card">
                     <div className="stat-n">{n}</div>
                     <div className="stat-l">{l}</div>
                   </div>
                 ))}
               </div>
+
+              {/* ── My Bookings ── */}
+              <div className="prof-section-head">
+                <div className="prof-section-title">My Bookings</div>
+                {bookingHistory.length > 0 && (
+                  <div className="prof-section-count">{bookingHistory.length}</div>
+                )}
+              </div>
+
+              {bookingHistoryLoading ? (
+                <div className="bh-loading" style={{padding:"18px 0"}}>
+                  <RefreshCw size={14} color="var(--ink4)" strokeWidth={2}/> Loading…
+                </div>
+              ) : bookingHistory.length === 0 ? (
+                <div className="prof-bookings-empty">
+                  <Calendar size={20} color="var(--ink4)" strokeWidth={1.5}/>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:700,color:"var(--ink2)"}}>No bookings yet</div>
+                    <div style={{fontSize:11,color:"var(--ink4)",marginTop:2}}>Book a ground to see it here</div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
+                  {bookingHistory.map((b, i) => {
+                    const groundName = b.courts?.grounds?.name || b.courts?.name || "Ground";
+                    const courtLabel = b.courts?.name && b.courts.name !== groundName ? ` · ${b.courts.name}` : "";
+                    const statusCls  = b.status === "confirmed" ? "confirmed" : b.status === "cancelled" ? "cancelled" : "pending";
+                    return (
+                      <div key={b.id || i} className="bh-card">
+                        <div className="bh-card-top">
+                          <div className="bh-ground">{groundName}{courtLabel}</div>
+                          <div className={`bh-status ${statusCls}`}>{b.status || "confirmed"}</div>
+                        </div>
+                        <div className="bh-meta">
+                          <div className="bh-meta-item">
+                            <Calendar size={11} strokeWidth={2.5}/>{b.booking_date}
+                          </div>
+                          <div className="bh-meta-item">
+                            <Clock size={11} strokeWidth={2.5}/>{b.start_time} – {b.end_time}
+                          </div>
+                        </div>
+                        <div className="bh-divider"/>
+                        <div className="bh-bottom">
+                          <div className="bh-ref">{b.booking_ref || "—"}</div>
+                          <div className="bh-price">Rs {(b.total_price || 0).toLocaleString()}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* ── Menu rows ── */}
               <div className="prof-list">
                 {[
-                  {I:Calendar, bg:"#DBEAFE", c:"#2563EB", t:"My Bookings",         s:"Upcoming & past",        action:()=>setScreen("bookingHistory")},
                   {I:UserPlus, bg:"#FEF3C7", c:"#D97706", t:"Matchmaking History", s:"Games joined or hosted", action:null},
                   {I:Heart,    bg:"#FCE7F3", c:"#DB2777", t:"Favourite Grounds",   s:"Your saved venues",      action:null},
                   {I:Bell,     bg:"#DCFCE7", c:"#16A34A", t:"Notifications",       s:"Booking alerts & requests", action:null},
@@ -3543,7 +3604,6 @@ export default function Outfield() {
                     <div className="prof-row-arr"><ChevronRight size={16} strokeWidth={2}/></div>
                   </div>
                 ))}
-                {/* Sign out button */}
                 <div className="prof-row" style={{marginTop:8}} onClick={handleLogout}>
                   <div className="prof-row-ico" style={{background:"#FEF2F2"}}>
                     <ArrowLeft size={17} color="#DC2626" strokeWidth={2}/>
