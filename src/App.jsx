@@ -1226,6 +1226,65 @@ input,select,textarea{font-size:16px !important;}
 const Ico = ({icon:I, size=16, color="currentColor", strokeWidth=2}) =>
   <I size={size} color={color} strokeWidth={strokeWidth}/>;
 
+/* ─── LOCATION PICKER COMPONENT ─── */
+function LocationPicker({ lat, lng, onChange, darkMode }) {
+  const DEFAULT = [24.8607, 67.0011];
+  const [pos, setPos] = useState([lat || DEFAULT[0], lng || DEFAULT[1]]);
+  const markerRef = useRef(null);
+
+  const TILE_URL = darkMode
+    ? 'https://cartodb-basemaps-a.global.ssl.fastly.net/dark_all/{z}/{x}/{y}.png'
+    : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+  const TILE_ATTR = darkMode ? '© CartoDB' : '© OpenStreetMap contributors';
+
+  const pinIcon = L.divIcon({ className:'', html:'<div class="map-pin"></div>', iconSize:[28,36], iconAnchor:[14,36] });
+
+  const handleGPS = () => {
+    navigator.geolocation?.getCurrentPosition(
+      p => { const c = [p.coords.latitude, p.coords.longitude]; setPos(c); onChange(c[0], c[1]); },
+      () => {}
+    );
+  };
+
+  return (
+    <div>
+      <div style={{borderRadius:12,overflow:'hidden',height:220,width:'100%',border:'1.5px solid var(--border)'}}>
+        <MapContainer
+          center={pos} zoom={13}
+          style={{height:'100%',width:'100%'}}
+          zoomControl={false}
+        >
+          <TileLayer key={darkMode?'dark':'light'} url={TILE_URL} attribution={TILE_ATTR}/>
+          <Marker
+            position={pos}
+            icon={pinIcon}
+            draggable={true}
+            ref={markerRef}
+            eventHandlers={{
+              dragend: () => {
+                const m = markerRef.current;
+                if (m) { const {lat:la,lng:lo} = m.getLatLng(); const c=[la,lo]; setPos(c); onChange(la,lo); }
+              }
+            }}
+          />
+        </MapContainer>
+      </div>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:8,gap:10}}>
+        <div style={{fontSize:11,color:'var(--ink4)',lineHeight:1.4}}>
+          Drag the pin to your ground's exact location
+        </div>
+        <button
+          type="button"
+          onClick={handleGPS}
+          style={{flexShrink:0,display:'flex',alignItems:'center',gap:5,background:'var(--card)',border:'1.5px solid var(--border)',borderRadius:100,padding:'6px 12px',fontSize:11,fontWeight:700,color:'var(--ink3)',cursor:'pointer',fontFamily:'Inter,sans-serif',whiteSpace:'nowrap'}}
+        >
+          <Navigation size={11} strokeWidth={2}/> Use My Location
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ─── MAP SCREEN COMPONENT ─── */
 function MapScreen({ grounds, darkMode, onBookGround }) {
   const [tileMode, setTileMode] = useState(() => darkMode ? 'dark' : 'osm');
@@ -1337,6 +1396,8 @@ export default function Outfield() {
   ]);
   const [ownerFacilityName, setOwnerFacilityName] = useState("");
   const [ownerPhone, setOwnerPhone]               = useState("");
+  const [ownerLat, setOwnerLat]                   = useState(24.8607);
+  const [ownerLng, setOwnerLng]                   = useState(67.0011);
   const [ownerFormError, setOwnerFormError]       = useState("");
   const [heroIdx, setHeroIdx] = useState(0);
   const [court, setCourt]       = useState(null);
@@ -3180,6 +3241,16 @@ export default function Outfield() {
                     </div>
                   </div>
 
+                  {/* Ground Location */}
+                  <div className="form-block">
+                    <div className="form-block-t">Ground Location</div>
+                    <LocationPicker
+                      lat={ownerLat} lng={ownerLng}
+                      darkMode={darkMode}
+                      onChange={(la, lo) => { setOwnerLat(la); setOwnerLng(lo); }}
+                    />
+                  </div>
+
                   {/* Operating Hours */}
                   <div className="form-block">
                     <div className="form-block-t">Facility Operating Hours</div>
@@ -3464,7 +3535,9 @@ export default function Outfield() {
                             contact_phone: ownerPhone,
                             img_url:      null,
                             rating:       0,
-                            status:       "pending"
+                            status:       "pending",
+                            latitude:     ownerLat,
+                            longitude:    ownerLng
                           })
                           .select()
                           .single();
