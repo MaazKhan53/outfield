@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from './supabase';
+import L from 'leaflet';
+import { MapContainer, TileLayer, Marker } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
 import {
   MapPin, Search, Bell, Star, Clock, ChevronRight, Heart,
   Users, Zap, Shield, ArrowLeft, Filter, Phone, Share2,
@@ -1159,11 +1162,147 @@ input,select,textarea{font-size:16px !important;}
 .status-toggle{display:flex;align-items:center;gap:5px;padding:5px 13px;border-radius:100px;border:none;font-size:11px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;transition:all .2s;}
 .status-toggle.live{background:#DCFCE7;color:#15803D;}
 .status-toggle.paused{background:#FEF3C7;color:#D97706;}
+
+/* ── DARK MODE ── */
+.dark{--bg:#0A0E1A;--card:#111827;--ink:#F1F5F9;--ink2:#CBD5E1;--ink3:#94A3B8;--ink4:#64748B;--border:#1E293B;--border2:#1E293B;}
+.dark .navbar{background:rgba(17,24,39,.97);border-top-color:#1E293B;}
+.dark .bh-card{background:#111827;border-color:#1E293B;}
+.dark .gcard{background:#111827;border-color:#1E293B;}
+.dark .prof-row{background:#111827;border-color:#1E293B;}
+.dark .stat-card{background:#111827;border-color:#1E293B;}
+.dark .cancel-sheet{background:#111827;}
+.dark .cancel-no{background:#0A0E1A;border-color:#1E293B;color:#F1F5F9;}
+.dark .screen{background:var(--bg);}
+.dark .exp-head{background:var(--bg);}
+.dark .match-header{background:var(--bg);}
+.dark input,.dark textarea,.dark select{background:#111827;color:#F1F5F9;border-color:#1E293B;}
+.dark input::placeholder,.dark textarea::placeholder{color:#64748B;}
+.dark .owner-card{background:#111827;border-color:#1E293B;}
+.dark .prof-list{gap:8px;}
+
+/* dark mode toggle row */
+.dm-section{background:var(--card);border-radius:var(--r2);border:1px solid var(--border2);overflow:hidden;margin-bottom:12px;}
+.dm-row{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;gap:12px;}
+.dm-row+.dm-row{border-top:1px solid var(--border2);}
+.dm-row-left{display:flex;align-items:center;gap:12px;}
+.dm-row-ico{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.dm-row-t{font-size:14px;font-weight:700;color:var(--ink);}
+.dm-row-s{font-size:11px;color:var(--ink4);margin-top:1px;}
+.dm-note{font-size:11px;color:var(--ink4);padding:8px 16px 12px;line-height:1.5;}
+.dm-toggle{width:42px;height:24px;border-radius:100px;border:none;cursor:pointer;position:relative;transition:background .2s;flex-shrink:0;}
+.dm-toggle.on{background:#22C55E;}
+.dm-toggle.off{background:var(--border);}
+.dm-toggle::after{content:'';position:absolute;top:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:left .2s;}
+.dm-toggle.on::after{left:21px;}
+.dm-toggle.off::after{left:3px;}
+
+/* ── MAP SCREEN ── */
+.map-screen{display:flex;flex-direction:column;flex:1;height:calc(100svh - 72px);position:relative;}
+.map-pin{width:22px;height:22px;background:#22C55E;border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 10px rgba(34,197,94,.5);}
+.map-user-dot{width:14px;height:14px;background:#3B82F6;border:3px solid #fff;border-radius:50%;animation:pulse-blue 2s infinite;}
+@keyframes pulse-blue{0%{box-shadow:0 0 0 0 rgba(59,130,246,.6);}100%{box-shadow:0 0 0 16px rgba(59,130,246,0);}}
+.map-tile-btn{position:absolute;top:14px;right:14px;z-index:999;background:rgba(255,255,255,.95);border:1px solid rgba(0,0,0,.12);border-radius:100px;padding:7px 14px;font-size:12px;font-weight:700;font-family:'Inter',sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.15);}
+.dark .map-tile-btn{background:rgba(17,24,39,.95);color:#F1F5F9;border-color:#1E293B;}
+.map-popup{position:absolute;bottom:14px;left:14px;right:14px;z-index:999;background:#fff;border-radius:18px;padding:16px;box-shadow:0 8px 32px rgba(0,0,0,.2);}
+.dark .map-popup{background:#111827;}
+.map-popup-close{position:absolute;top:12px;right:12px;width:26px;height:26px;border-radius:50%;background:var(--border2);border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink3);}
+.map-popup-name{font-family:'Sora',sans-serif;font-size:15px;font-weight:800;color:var(--ink);margin-bottom:4px;padding-right:28px;}
+.map-popup-area{font-size:11px;color:var(--ink4);display:flex;align-items:center;gap:4px;margin-bottom:10px;}
+.map-popup-meta{display:flex;align-items:center;gap:12px;margin-bottom:12px;}
+.map-popup-rating{display:flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:var(--ink);}
+.map-popup-price{font-size:12px;color:var(--ink3);font-weight:600;}
+.map-popup-book{width:100%;background:var(--green-d);color:#fff;border:none;border-radius:12px;padding:11px;font-size:13px;font-weight:800;cursor:pointer;font-family:'Inter',sans-serif;}
 `;
 
 /* ─── ICON HELPERS ─── */
 const Ico = ({icon:I, size=16, color="currentColor", strokeWidth=2}) =>
   <I size={size} color={color} strokeWidth={strokeWidth}/>;
+
+/* ─── MAP SCREEN COMPONENT ─── */
+function MapScreen({ grounds, darkMode, onBookGround }) {
+  const [tileMode, setTileMode] = useState(() => darkMode ? 'dark' : 'osm');
+  const [userPos,  setUserPos]  = useState(null);
+  const [selected, setSelected] = useState(null);
+
+  // Sync tile with dark mode changes
+  useEffect(() => {
+    if (darkMode) setTileMode('dark');
+    else setTileMode(prev => prev === 'dark' ? 'osm' : prev);
+  }, [darkMode]);
+
+  // Request GPS once on mount
+  useEffect(() => {
+    navigator.geolocation?.getCurrentPosition(
+      pos => setUserPos([pos.coords.latitude, pos.coords.longitude]),
+      () => {} // silently fall back to default Karachi centre
+    );
+  }, []);
+
+  const TILES = {
+    osm:       { url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',                                                                     attr: '© OpenStreetMap contributors' },
+    satellite: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attr: '© Esri' },
+    dark:      { url: 'https://cartodb-basemaps-a.global.ssl.fastly.net/dark_all/{z}/{x}/{y}.png',                    attr: '© CartoDB' },
+  };
+
+  const greenIcon = L.divIcon({ className:'', html:'<div class="map-pin"></div>',      iconSize:[28,36], iconAnchor:[14,36] });
+  const userIcon  = L.divIcon({ className:'', html:'<div class="map-user-dot"></div>', iconSize:[20,20], iconAnchor:[10,10] });
+
+  return (
+    <div style={{position:'relative', flex:1, overflow:'hidden', height:'100%'}}>
+      <MapContainer
+        center={[24.8607, 67.0011]}
+        zoom={12}
+        style={{height:'100%', width:'100%'}}
+        zoomControl={false}
+      >
+        <TileLayer key={tileMode} url={TILES[tileMode].url} attribution={TILES[tileMode].attr}/>
+
+        {grounds.map(g => g.latitude && g.longitude ? (
+          <Marker
+            key={g.id}
+            position={[g.latitude, g.longitude]}
+            icon={greenIcon}
+            eventHandlers={{ click: () => setSelected(g) }}
+          />
+        ) : null)}
+
+        {userPos && <Marker position={userPos} icon={userIcon}/>}
+      </MapContainer>
+
+      {/* Satellite toggle — only shown in light mode */}
+      {!darkMode && (
+        <button className="map-tile-btn"
+          onClick={() => setTileMode(t => t === 'satellite' ? 'osm' : 'satellite')}>
+          {tileMode === 'satellite' ? '🗺 Map' : '🛰 Satellite'}
+        </button>
+      )}
+
+      {/* Ground popup card */}
+      {selected && (
+        <div className="map-popup">
+          <button className="map-popup-close" onClick={() => setSelected(null)}>
+            <X size={15} strokeWidth={2.5}/>
+          </button>
+          <div className="map-popup-name">{selected.name}</div>
+          <div className="map-popup-area">
+            <MapPin size={11} strokeWidth={2}/> {selected.area}
+          </div>
+          <div className="map-popup-meta">
+            {selected.rating && (
+              <span className="map-popup-rating">
+                <Star size={11} fill="#F59E0B" color="#F59E0B" strokeWidth={0}/> {selected.rating}
+              </span>
+            )}
+            <span className="map-popup-price">from Rs {(selected.priceFrom||2000).toLocaleString()}</span>
+          </div>
+          <button className="map-popup-book" onClick={() => { onBookGround(selected); setSelected(null); }}>
+            Book Now
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Outfield() {
   const [screen, setScreen]   = useState("splash");
@@ -1210,6 +1349,8 @@ export default function Outfield() {
   const [ownerBookings, setOwnerBookings]     = useState([]);
   const [ownerDashLoading, setOwnerDashLoading] = useState(false);
   const [ownerDashTab, setOwnerDashTab]       = useState("grounds");
+  const [darkMode, setDarkMode]               = useState(() => localStorage.getItem('otf-dark') === 'true');
+  const [autoDarkMode, setAutoDarkMode]       = useState(() => localStorage.getItem('otf-auto-dark') === 'true');
   const [cancelConfirmId, setCancelConfirmId] = useState(null);
   const [editProfileSaving, setEditProfileSaving] = useState(false);
   const [editName, setEditName]               = useState("");
@@ -1239,7 +1380,7 @@ export default function Outfield() {
   const touchStartY           = useRef(null);
 
   // Tab order for swipe navigation
-  const TAB_ORDER = ["home","explore","match","profile"];
+  const TAB_ORDER = ["home","explore","map","match","profile"];
 
   const handleTouchStart = (e) => {
     touchStartX.current = e.touches[0].clientX;
@@ -1254,7 +1395,7 @@ export default function Outfield() {
     // clearly more horizontal than vertical (ratio > 2.5:1)
     // This prevents conflict with horizontal scroll areas like sport chips
     if(Math.abs(dx) > 90 && Math.abs(dx) > Math.abs(dy) * 2.5) {
-      const mainScreens = ["home","explore","match","profile"];
+      const mainScreens = ["home","explore","map","match","profile"];
       if(!mainScreens.includes(screen)) return;
       const idx = TAB_ORDER.indexOf(nav);
       if(dx < 0 && idx < TAB_ORDER.length - 1) {
@@ -1331,6 +1472,8 @@ export default function Outfield() {
             openTill: g.open_till || "23:00",
             description: g.description,
             img: g.img_url,
+            latitude: g.latitude || null,
+            longitude: g.longitude || null,
             customImage: null,
             isFacility: false,
             courts: [],
@@ -1373,6 +1516,16 @@ export default function Outfield() {
         setBookingHistoryLoading(false);
       });
   }, [screen, session]);
+
+  useEffect(() => { localStorage.setItem('otf-dark', darkMode); }, [darkMode]);
+  useEffect(() => { localStorage.setItem('otf-auto-dark', autoDarkMode); }, [autoDarkMode]);
+  useEffect(() => {
+    if (!autoDarkMode) return;
+    const check = () => { const h = new Date().getHours(); setDarkMode(h >= 18 || h < 6); };
+    check();
+    const id = setInterval(check, 60000);
+    return () => clearInterval(id);
+  }, [autoDarkMode]);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2700); };
 
@@ -1542,7 +1695,7 @@ export default function Outfield() {
 
   const goNav = (n) => {
     setNav(n);
-    setScreen({home:"home",explore:"explore",match:"match",profile:"profile"}[n]);
+    setScreen({home:"home",explore:"explore",map:"map",match:"match",profile:"profile"}[n]);
   };
 
   const navigate = (toScreen, transition="fade") => {
@@ -1628,7 +1781,7 @@ export default function Outfield() {
           {toast}
         </div>
       )}
-      <div className="app" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+      <div className={darkMode ? 'app dark' : 'app'} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
 
         {/* ═══ AUTH LOADING ═══ */}
         {!authChecked && (
@@ -2607,6 +2760,17 @@ export default function Outfield() {
                 <ChevronRight size={14} color="#92400E" style={{marginLeft:"auto"}} strokeWidth={2.5}/>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ═══ MAP ═══ */}
+        {screen === "map" && (
+          <div className="map-screen">
+            <MapScreen
+              grounds={dbGrounds.length > 0 ? dbGrounds : GROUNDS}
+              darkMode={darkMode}
+              onBookGround={(g) => { setGround(g); setScreen("ground"); }}
+            />
           </div>
         )}
 
@@ -3591,7 +3755,6 @@ export default function Outfield() {
                   {I:UserPlus, bg:"#FEF3C7", c:"#D97706", t:"Matchmaking History", s:"Games joined or hosted", action:null},
                   {I:Heart,    bg:"#FCE7F3", c:"#DB2777", t:"Favourite Grounds",   s:"Your saved venues",      action:null},
                   {I:Bell,     bg:"#DCFCE7", c:"#16A34A", t:"Notifications",       s:"Booking alerts & requests", action:null},
-                  {I:SlidersHorizontal, bg:"#F3F4F6", c:"#4B5563", t:"Settings",   s:"Account & preferences",  action:null},
                 ].map((r,i)=>(
                   <div key={i} className="prof-row" onClick={r.action || undefined}>
                     <div className="prof-row-ico" style={{background:r.bg}}>
@@ -3604,6 +3767,42 @@ export default function Outfield() {
                     <div className="prof-row-arr"><ChevronRight size={16} strokeWidth={2}/></div>
                   </div>
                 ))}
+
+                {/* ── Settings / Dark mode ── */}
+                <div className="dm-section">
+                  <div className="dm-row">
+                    <div className="dm-row-left">
+                      <div className="dm-row-ico" style={{background:"#F3F4F6"}}>
+                        <SlidersHorizontal size={17} color="#4B5563" strokeWidth={2}/>
+                      </div>
+                      <div>
+                        <div className="dm-row-t">Dark mode</div>
+                        <div className="dm-row-s">Override theme manually</div>
+                      </div>
+                    </div>
+                    <button
+                      className={`dm-toggle ${darkMode ? 'on' : 'off'}`}
+                      onClick={() => { if (!autoDarkMode) setDarkMode(d => !d); }}
+                      style={autoDarkMode ? {opacity:.4,pointerEvents:'none'} : {}}
+                    />
+                  </div>
+                  <div className="dm-row">
+                    <div className="dm-row-left">
+                      <div className="dm-row-ico" style={{background:"#EFF6FF"}}>
+                        <Clock size={17} color="#3B82F6" strokeWidth={2}/>
+                      </div>
+                      <div>
+                        <div className="dm-row-t">Auto dark mode</div>
+                        <div className="dm-row-s">Dark after 6 PM · Light after 6 AM</div>
+                      </div>
+                    </div>
+                    <button
+                      className={`dm-toggle ${autoDarkMode ? 'on' : 'off'}`}
+                      onClick={() => setAutoDarkMode(a => !a)}
+                    />
+                  </div>
+                  <div className="dm-note">Auto mode overrides the manual toggle above.</div>
+                </div>
                 <div className="prof-row" style={{marginTop:8}} onClick={handleLogout}>
                   <div className="prof-row-ico" style={{background:"#FEF2F2"}}>
                     <ArrowLeft size={17} color="#DC2626" strokeWidth={2}/>
@@ -3625,6 +3824,7 @@ export default function Outfield() {
             {[
               {id:"home",    Icon:Home,    label:"Home"},
               {id:"explore", Icon:Compass, label:"Explore"},
+              {id:"map",     Icon:Map,     label:"Map"},
               {id:"match",   Icon:UserPlus,label:"Matchmaking"},
               {id:"profile", Icon:User,    label:"Profile"},
             ].map(n=>{
