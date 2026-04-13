@@ -1221,6 +1221,14 @@ input,select,textarea{font-size:16px !important;}
 .app.dark input::placeholder,.app.dark textarea::placeholder{color:#64748B !important;}
 .app.dark .map-tile-btn{background:rgba(17,24,39,.95) !important;color:#F1F5F9 !important;border-color:#1E293B !important;}
 .app.dark .map-popup{background:#111827 !important;}
+.app.dark .detail-sheet{background:#111827 !important;border-top:none !important;}
+.app.dark .home-head::after{background:#0A0E1A !important;}
+.app.dark .match-head::after{background:#0A0E1A !important;}
+.app.dark .exp-head::after{background:#0A0E1A !important;}
+.app.dark .search-box{background:#1E293B !important;border-color:#334155 !important;}
+.app.dark .search-input{background:transparent !important;color:#F1F5F9 !important;}
+.app.dark .search-input::placeholder{color:#64748B !important;}
+.app.dark .search-box svg{color:#64748B !important;}
 
 /* dark mode toggle row */
 .dm-section{background:var(--card);border-radius:var(--r2);border:1px solid var(--border2);overflow:hidden;margin-bottom:12px;}
