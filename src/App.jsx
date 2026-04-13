@@ -3,6 +3,10 @@ import { supabase } from './supabase';
 import L from 'leaflet';
 import { MapContainer, TileLayer, Marker } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
+import markerIcon from 'leaflet/dist/images/marker-icon.png';
+import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({ iconUrl: markerIcon, shadowUrl: markerShadow });
 import {
   MapPin, Search, Bell, Star, Clock, ChevronRight, Heart,
   Users, Zap, Shield, ArrowLeft, Filter, Phone, Share2,
