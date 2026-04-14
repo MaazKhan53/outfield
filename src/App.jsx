@@ -1581,24 +1581,38 @@ function FlyToUser({ pos }) {
   return null;
 }
 
-/* Calls invalidateSize on mount so Leaflet fills the container from the first frame,
-   then keeps a ResizeObserver running to re-fill on every future size change
-   (tab slides, dark-mode toggles, iOS toolbar show/hide, etc.). */
-function ResizeMap() {
+/* Calls invalidateSize on mount, on every dark-mode toggle, and whenever the map
+   tab becomes active — plus a ResizeObserver for any other container size changes. */
+function ResizeMap({ darkMode, isActive }) {
   const map = useMap();
+
+  // Mount: fill container immediately
   useEffect(() => {
-    // Immediate call so initial render is correct
     map.invalidateSize({ pan: false });
     const container = map.getContainer();
     const ro = new ResizeObserver(() => map.invalidateSize({ pan: false }));
     ro.observe(container);
     return () => ro.disconnect();
   }, [map]);
+
+  // Dark-mode toggle: re-fill after the DOM has repainted
+  useEffect(() => {
+    const t = setTimeout(() => map.invalidateSize({ pan: false }), 100);
+    return () => clearTimeout(t);
+  }, [darkMode]);
+
+  // Tab navigation: re-fill whenever the map screen becomes visible
+  useEffect(() => {
+    if (!isActive) return;
+    const t = setTimeout(() => map.invalidateSize({ pan: false }), 100);
+    return () => clearTimeout(t);
+  }, [isActive]);
+
   return null;
 }
 
 /* ─── MAP SCREEN COMPONENT ─── */
-function MapScreen({ grounds, darkMode, onBookGround }) {
+function MapScreen({ grounds, darkMode, onBookGround, isActive }) {
   const [tileMode, setTileMode] = useState(() => darkMode ? 'dark' : 'osm');
   const [userPos,  setUserPos]  = useState(null);
   const [selected, setSelected] = useState(null);
@@ -1705,7 +1719,7 @@ function MapScreen({ grounds, darkMode, onBookGround }) {
 
         {userPos && <Marker position={userPos} icon={userIcon}/>}
         <FlyToUser pos={userPos}/>
-        <ResizeMap/>
+        <ResizeMap darkMode={darkMode} isActive={isActive}/>
       </MapContainer>
 
       {/* Satellite toggle — only shown in light mode (or when override is active) */}
@@ -3504,6 +3518,7 @@ export default function Outfield() {
                     grounds={dbGrounds.length > 0 ? dbGrounds : GROUNDS}
                     darkMode={darkMode}
                     onBookGround={(g) => { setGround(g); setScreen("ground"); }}
+                    isActive={nav === 'map'}
                   />
                 </div>
               </div>
