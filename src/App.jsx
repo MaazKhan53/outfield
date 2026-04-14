@@ -870,7 +870,7 @@ input,select,textarea{font-size:16px !important;}
 .sdb-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink2);padding:4px 0;font-weight:500;}
 
 /* ── MATCHMAKING ── */
-.match{background:var(--bg);overflow-y:auto;padding-bottom:88px;min-height:100svh;}
+.match{background:var(--bg);overflow-y:auto;padding-bottom:72px;min-height:100svh;}
 .match-head{background:var(--ink);padding:52px 18px 26px;position:relative;overflow:hidden;}
 .match-head::after{content:'';position:absolute;bottom:-18px;left:0;right:0;height:36px;background:var(--bg);border-radius:22px 22px 0 0;}
 .match-glow{position:absolute;top:-30px;right:-20px;width:160px;height:160px;background:radial-gradient(circle,rgba(249,115,22,.15),transparent 70%);}
@@ -893,14 +893,14 @@ input,select,textarea{font-size:16px !important;}
 .mc-join.done{background:transparent;color:var(--orange);border:1.5px solid var(--orange);}
 
 /* ── EXPLORE ── */
-.explore{background:var(--bg);overflow-y:auto;padding-bottom:88px;min-height:100svh;}
+.explore{background:var(--bg);overflow-y:auto;padding-bottom:72px;min-height:100svh;}
 .exp-head{background:var(--ink);padding:52px 18px 26px;position:relative;overflow:hidden;}
 .exp-head::after{content:'';position:absolute;bottom:-18px;left:0;right:0;height:36px;background:var(--bg);border-radius:22px 22px 0 0;}
 .exp-title{font-family:'Sora',sans-serif;font-size:20px;font-weight:900;color:#fff;letter-spacing:-.3px;}
 .exp-sub{font-size:11px;color:rgba(255,255,255,.35);margin-top:3px;}
 
 /* ── PROFILE ── */
-.profile{background:var(--bg);overflow-y:auto;padding-bottom:88px;min-height:100svh;}
+.profile{background:var(--bg);overflow-y:auto;padding-bottom:72px;min-height:100svh;}
 .prof-head{background:var(--ink);padding:52px 18px 44px;text-align:center;position:relative;overflow:hidden;}
 .prof-head::after{content:'';position:absolute;bottom:-18px;left:0;right:0;height:36px;background:var(--bg);border-radius:22px 22px 0 0;}
 .prof-glow{position:absolute;inset:0;background:radial-gradient(ellipse 60% 50% at 50% 40%,rgba(34,197,94,.1) 0%,transparent 70%);pointer-events:none;}
@@ -1673,6 +1673,8 @@ export default function Outfield() {
   const [notifLoading, setNotifLoading]           = useState(false);
   // Feature: city filter
   const [filterCity, setFilterCity]               = useState("all");
+  // Feature: contact us sheet
+  const [showContactSheet, setShowContactSheet]   = useState(false);
   // Feature: photo upload URLs
   const [uploadedImgUrls, setUploadedImgUrls]     = useState([]);
   const [photoUploading, setPhotoUploading]       = useState(false);
@@ -1700,6 +1702,8 @@ export default function Outfield() {
   const touchStartX           = useRef(null);
   const touchStartY           = useRef(null);
   const swipeIgnored          = useRef(false);
+  const heroScrollRef         = useRef(null);
+  const heroResumeRef         = useRef(null);
 
   // Tab order for swipe navigation
   const TAB_ORDER = ["home","explore","map","match","profile"];
@@ -1987,25 +1991,26 @@ export default function Outfield() {
       .then(({ data }) => { if (data) setOwnerAnnouncements(data); });
   }, [screen, session, authUser]);
 
-  // Bug 5 — Android back button: push history state on screen change
+  // Android back button — push history only for non-tab forward navigation
   useEffect(() => {
-    window.history.pushState({ screen }, '');
+    window.history.replaceState({ screen: 'home' }, '');
+  }, []);
+
+  useEffect(() => {
+    if (screen === 'detail' || screen === 'owner' || screen === 'success') {
+      window.history.pushState({ screen }, '');
+    }
   }, [screen]);
 
   useEffect(() => {
-    const handler = (e) => {
-      const prev = e.state?.screen;
-      if (screen === 'owner') { setShowOwnerExitConfirm(true); window.history.pushState({ screen }, ''); return; }
-      if (screen === 'detail') { setScreen('home'); setNav('home'); window.history.pushState({ screen: 'home' }, ''); return; }
+    const handler = () => {
+      if (screen === 'owner') { setShowOwnerExitConfirm(true); window.history.pushState({ screen: 'owner' }, ''); return; }
+      if (screen === 'detail') { setScreen(nav === 'explore' ? 'explore' : 'home'); return; }
       if (screen === 'confirm') { setScreen('detail'); window.history.pushState({ screen: 'detail' }, ''); return; }
-      if (screen === 'success') { setScreen('home'); setNav('home'); window.history.pushState({ screen: 'home' }, ''); return; }
-      if (screen === 'editProfile') { setScreen('profile'); window.history.pushState({ screen: 'profile' }, ''); return; }
-      if (screen === 'bookingHistory') { setScreen('profile'); window.history.pushState({ screen: 'profile' }, ''); return; }
-      if (['home','explore','map','match','profile'].includes(screen)) {
-        const idx = TAB_ORDER.indexOf(nav);
-        if (idx > 0) { goNav(TAB_ORDER[idx-1]); }
-        else { window.history.pushState({ screen }, ''); }
-      }
+      if (screen === 'success') { setScreen('home'); setNav('home'); return; }
+      if (screen === 'editProfile') { setScreen('profile'); return; }
+      if (screen === 'bookingHistory') { setScreen('profile'); return; }
+      // On a main tab — do nothing, let browser minimize/close
     };
     window.addEventListener('popstate', handler);
     return () => window.removeEventListener('popstate', handler);
@@ -2891,7 +2896,9 @@ export default function Outfield() {
                 </div>
               </div>
               <div className="hero-scroll-wrap" data-swipe-ignore="true">
-                <div className="hero-scroll" data-swipe-ignore="true">
+                <div className="hero-scroll" data-swipe-ignore="true" ref={heroScrollRef}
+                  onTouchStart={()=>{ if(heroScrollRef.current) heroScrollRef.current.style.animationPlayState='paused'; clearTimeout(heroResumeRef.current); }}
+                  onTouchEnd={()=>{ heroResumeRef.current = setTimeout(()=>{ if(heroScrollRef.current) heroScrollRef.current.style.animationPlayState='running'; },3000); }}>
                   {[...featGrounds, ...featGrounds].map((g,i) => {
                     return (
                       <div key={i} className="hero-card" onClick={()=>openGround(g)}>
@@ -3485,6 +3492,16 @@ export default function Outfield() {
                     />
                   </div>
                   <div className="dm-note">Auto mode overrides the manual toggle above.</div>
+                </div>
+                <div className="prof-row" style={{marginTop:8}} onClick={()=>setShowContactSheet(true)}>
+                  <div className="prof-row-ico" style={{background:"#DCFCE7"}}>
+                    <Phone size={17} color="#16A34A" strokeWidth={2}/>
+                  </div>
+                  <div>
+                    <div className="prof-row-t">Contact Us</div>
+                    <div className="prof-row-s">Get help from Outfield support</div>
+                  </div>
+                  <div className="prof-row-arr"><ChevronRight size={16} strokeWidth={2}/></div>
                 </div>
                 <div className="prof-row" style={{marginTop:8}} onClick={handleLogout}>
                   <div className="prof-row-ico" style={{background:"#FEF2F2"}}>
@@ -5203,6 +5220,16 @@ export default function Outfield() {
                   </div>
                   <div className="dm-note">Auto mode overrides the manual toggle above.</div>
                 </div>
+                <div className="prof-row" style={{marginTop:8}} onClick={()=>setShowContactSheet(true)}>
+                  <div className="prof-row-ico" style={{background:"#DCFCE7"}}>
+                    <Phone size={17} color="#16A34A" strokeWidth={2}/>
+                  </div>
+                  <div>
+                    <div className="prof-row-t">Contact Us</div>
+                    <div className="prof-row-s">Get help from Outfield support</div>
+                  </div>
+                  <div className="prof-row-arr"><ChevronRight size={16} strokeWidth={2}/></div>
+                </div>
                 <div className="prof-row" style={{marginTop:8}} onClick={handleLogout}>
                   <div className="prof-row-ico" style={{background:"#FEF2F2"}}>
                     <ArrowLeft size={17} color="#DC2626" strokeWidth={2}/>
@@ -5359,6 +5386,32 @@ export default function Outfield() {
           </div>
         )}
         </>)}
+
+        {/* ═══ CONTACT US SHEET ═══ */}
+        {showContactSheet && (
+          <div className="cancel-overlay" onClick={e=>{if(e.target.className==="cancel-overlay")setShowContactSheet(false);}}>
+            <div className="cancel-sheet" style={{paddingBottom:28}}>
+              <div className="cancel-title">Contact Outfield Support</div>
+              <div style={{fontSize:13,color:"var(--ink3)",marginBottom:4,textAlign:"center"}}>We typically respond within a few hours</div>
+              <div style={{fontSize:12,color:"var(--green)",fontWeight:600,marginBottom:20,textAlign:"center"}}>Available 9am – 10pm PKT</div>
+              <button
+                style={{width:"100%",padding:"14px 0",borderRadius:14,background:"#25D366",color:"#fff",fontWeight:700,fontSize:15,border:"none",cursor:"pointer",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}
+                onClick={()=>window.open("https://wa.me/923339555293","_blank")}>
+                <Phone size={18} strokeWidth={2}/> WhatsApp Us
+              </button>
+              <button
+                style={{width:"100%",padding:"14px 0",borderRadius:14,background:"var(--green)",color:"#fff",fontWeight:700,fontSize:15,border:"none",cursor:"pointer",marginBottom:14,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}
+                onClick={()=>window.open("mailto:support@outfield.pk","_blank")}>
+                <Bell size={18} strokeWidth={2}/> Email Us
+              </button>
+              <button
+                style={{width:"100%",padding:"12px 0",borderRadius:14,background:"var(--border2)",color:"var(--ink3)",fontWeight:600,fontSize:14,border:"none",cursor:"pointer"}}
+                onClick={()=>setShowContactSheet(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
