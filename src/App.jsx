@@ -1397,7 +1397,7 @@ input,select,textarea{font-size:16px !important;}
 .dm-toggle.off::after{left:3px;}
 
 /* ── MAP SCREEN ── */
-.map-screen{display:flex;flex-direction:column;flex:1;height:100%;overflow:hidden;position:relative;}
+.map-screen{display:block;flex:1;position:relative;}
 /* Prevent black void showing when Leaflet is panned to world edges */
 .leaflet-container{background:#b9d4a8 !important;}
 .app.dark .leaflet-container{background:#1a2035 !important;}
@@ -1581,12 +1581,14 @@ function FlyToUser({ pos }) {
   return null;
 }
 
-/* Watches the Leaflet container with a ResizeObserver so invalidateSize() is called
-   on every real DOM size change — tab slides, dark-mode toggles, iOS toolbar show/hide.
-   No timeouts, no dependency guessing. */
+/* Calls invalidateSize on mount so Leaflet fills the container from the first frame,
+   then keeps a ResizeObserver running to re-fill on every future size change
+   (tab slides, dark-mode toggles, iOS toolbar show/hide, etc.). */
 function ResizeMap() {
   const map = useMap();
   useEffect(() => {
+    // Immediate call so initial render is correct
+    map.invalidateSize({ pan: false });
     const container = map.getContainer();
     const ro = new ResizeObserver(() => map.invalidateSize({ pan: false }));
     ro.observe(container);
@@ -1680,7 +1682,7 @@ function MapScreen({ grounds, darkMode, onBookGround }) {
   const lsPillClass = `ls-pill${lsOverride ? ' bijli' : ''}${lsPillState === 'animating' ? ' animating' : lsPillState === 'shrinking' ? ' shrinking' : lsPillState === 'resting' ? ' resting' : ''}`;
 
   return (
-    <div style={{position:'relative', flex:1, overflow:'hidden', height:'100%'}}>
+    <div style={{position:'relative', width:'100%', height:'calc(100svh - 64px)'}}>
       <MapContainer
         center={[24.8607, 67.0011]}
         zoom={12}
@@ -3496,7 +3498,7 @@ export default function Outfield() {
               </div>
 
               {/* MAP PANEL */}
-              <div style={{width:'20%',flexShrink:0,height:'calc(100dvh - 72px)',overflow:'hidden',display:'flex',flexDirection:'column'}}>
+              <div style={{width:'20%',flexShrink:0}}>
                 <div className="map-screen">
                   <MapScreen
                     grounds={dbGrounds.length > 0 ? dbGrounds : GROUNDS}
