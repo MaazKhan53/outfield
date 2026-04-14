@@ -12,6 +12,7 @@ ALTER TABLE courts ADD COLUMN IF NOT EXISTS pricing_type text DEFAULT 'fixed';
 CREATE TABLE IF NOT EXISTS announcements (id uuid default gen_random_uuid() primary key, ground_id uuid, owner_id uuid, message text, created_at timestamptz default now());
 CREATE TABLE IF NOT EXISTS blocked_slots (id uuid default gen_random_uuid() primary key, court_id uuid, ground_id uuid, date text, start_time text, end_time text, reason text, owner_id uuid, created_at timestamptz default now());
 CREATE TABLE IF NOT EXISTS favourites (id uuid default gen_random_uuid() primary key, user_id uuid, ground_id uuid, created_at timestamptz default now(), UNIQUE(user_id, ground_id));
+CREATE TABLE IF NOT EXISTS feedback (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid REFERENCES auth.users(id), user_name text, user_email text, type text, message text NOT NULL, screen text, created_at timestamptz DEFAULT now());
 */
 import { useState, useEffect, useRef } from "react";
 import { supabase } from './supabase';
@@ -1260,6 +1261,23 @@ input,select,textarea{font-size:16px !important;}
 .app.dark .flbl{color:#94A3B8 !important;}
 .app.dark .cancel-sheet{background:#111827 !important;}
 .app.dark .cancel-no{background:#060B12 !important;border-color:#1E293B !important;color:#F1F5F9 !important;}
+/* ── FEEDBACK ── */
+.feedback-btn{position:fixed;bottom:78px;right:calc(50% - 207px);z-index:200;display:flex;align-items:center;gap:6px;padding:8px 14px;background:#fff;border:1.5px solid var(--border);border-radius:100px;box-shadow:0 3px 14px rgba(0,0,0,.1);font-size:12px;font-weight:700;color:var(--ink2);cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s;}
+.feedback-btn:active{transform:scale(.95);}
+.app.dark .feedback-btn{background:#1E293B !important;border-color:#334155 !important;color:#F1F5F9 !important;}
+.fb-type-cards{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin:18px 0 6px;}
+.fb-type-card{border:2px solid var(--border);border-radius:16px;padding:18px 12px 16px;cursor:pointer;text-align:center;transition:all .17s;background:var(--bg);}
+.fb-type-card.sel{border-color:var(--green);background:var(--green-l);}
+.fb-type-card:active{transform:scale(.97);}
+.fb-type-ico{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 10px;}
+.fb-type-t{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:3px;}
+.fb-type-s{font-size:11px;color:var(--ink4);line-height:1.4;}
+.app.dark .fb-type-card{background:#0D1117 !important;border-color:#1E293B !important;}
+.app.dark .fb-type-card.sel{border-color:var(--green) !important;background:#052e16 !important;}
+.app.dark .fb-type-t{color:#F1F5F9 !important;}
+.fb-textarea{width:100%;border:1.5px solid var(--border);border-radius:13px;padding:13px 14px;font-size:14px;font-family:'Inter',sans-serif;color:var(--ink);background:var(--bg);resize:none;outline:none;line-height:1.55;margin-top:14px;}
+.fb-textarea:focus{border-color:var(--green);}
+.fb-screen-sel{width:100%;border:1.5px solid var(--border);border-radius:13px;padding:12px 14px;font-size:14px;font-family:'Inter',sans-serif;color:var(--ink);background:var(--bg);outline:none;cursor:pointer;margin-top:10px;appearance:none;}
 .app.dark .bh-card{background:#111827 !important;border-color:#1E293B !important;}
 .app.dark .owner-card{background:#111827 !important;border-color:#1E293B !important;}
 .app.dark input,.app.dark textarea,.app.dark select{background:#1E293B !important;color:#F1F5F9 !important;border-color:#334155 !important;}
@@ -1675,6 +1693,12 @@ export default function Outfield() {
   const [filterCity, setFilterCity]               = useState("all");
   // Feature: contact us sheet
   const [showContactSheet, setShowContactSheet]   = useState(false);
+  // Feature: in-app feedback
+  const [showFeedback, setShowFeedback]           = useState(false);
+  const [feedbackStep, setFeedbackStep]           = useState(1);
+  const [feedbackType, setFeedbackType]           = useState('');
+  const [feedbackMessage, setFeedbackMessage]     = useState('');
+  const [feedbackScreen, setFeedbackScreen]       = useState('');
   // Feature: photo upload URLs
   const [uploadedImgUrls, setUploadedImgUrls]     = useState([]);
   const [photoUploading, setPhotoUploading]       = useState(false);
@@ -3503,6 +3527,16 @@ export default function Outfield() {
                   </div>
                   <div className="prof-row-arr"><ChevronRight size={16} strokeWidth={2}/></div>
                 </div>
+                <div className="prof-row" style={{marginTop:8}} onClick={()=>{setShowFeedback(true);setFeedbackStep(1);setFeedbackType('');setFeedbackMessage('');setFeedbackScreen('');}}>
+                  <div className="prof-row-ico" style={{background:"#FEF3C7"}}>
+                    <Lightbulb size={17} color="#D97706" strokeWidth={2}/>
+                  </div>
+                  <div>
+                    <div className="prof-row-t">Send Feedback</div>
+                    <div className="prof-row-s">Report bugs or share ideas</div>
+                  </div>
+                  <div className="prof-row-arr"><ChevronRight size={16} strokeWidth={2}/></div>
+                </div>
                 <div className="prof-row" style={{marginTop:8}} onClick={handleLogout}>
                   <div className="prof-row-ico" style={{background:"#FEF2F2"}}>
                     <ArrowLeft size={17} color="#DC2626" strokeWidth={2}/>
@@ -5230,6 +5264,16 @@ export default function Outfield() {
                   </div>
                   <div className="prof-row-arr"><ChevronRight size={16} strokeWidth={2}/></div>
                 </div>
+                <div className="prof-row" style={{marginTop:8}} onClick={()=>{setShowFeedback(true);setFeedbackStep(1);setFeedbackType('');setFeedbackMessage('');setFeedbackScreen('');}}>
+                  <div className="prof-row-ico" style={{background:"#FEF3C7"}}>
+                    <Lightbulb size={17} color="#D97706" strokeWidth={2}/>
+                  </div>
+                  <div>
+                    <div className="prof-row-t">Send Feedback</div>
+                    <div className="prof-row-s">Report bugs or share ideas</div>
+                  </div>
+                  <div className="prof-row-arr"><ChevronRight size={16} strokeWidth={2}/></div>
+                </div>
                 <div className="prof-row" style={{marginTop:8}} onClick={handleLogout}>
                   <div className="prof-row-ico" style={{background:"#FEF2F2"}}>
                     <ArrowLeft size={17} color="#DC2626" strokeWidth={2}/>
@@ -5363,6 +5407,13 @@ export default function Outfield() {
           </div>
         )}
 
+        {/* ═══ FEEDBACK FLOATING BUTTON ═══ */}
+        {['home','explore','map','match','profile'].includes(screen) && (
+          <button className="feedback-btn" onClick={()=>{setShowFeedback(true);setFeedbackStep(1);setFeedbackType('');setFeedbackMessage('');setFeedbackScreen('');}}>
+            <Share2 size={13} strokeWidth={2.5}/> Feedback
+          </button>
+        )}
+
         {/* ═══ NAV BAR ═══ */}
         {!["splash","onboard","success","owner"].includes(screen) && (
           <div className="navbar">
@@ -5386,6 +5437,80 @@ export default function Outfield() {
           </div>
         )}
         </>)}
+
+        {/* ═══ FEEDBACK SHEET ═══ */}
+        {showFeedback && (
+          <div className="cancel-overlay" onClick={e=>{if(e.target.className==="cancel-overlay"){setShowFeedback(false);}}}>
+            <div className="cancel-sheet" style={{paddingBottom:32}}>
+              {feedbackStep === 1 ? (<>
+                <div className="cancel-title" style={{marginBottom:2}}>Share Feedback</div>
+                <div style={{fontSize:12,color:"var(--ink4)",marginBottom:0}}>Help us make Outfield better</div>
+                <div className="fb-type-cards">
+                  <div className={`fb-type-card${feedbackType==='bug'?' sel':''}`} onClick={()=>{setFeedbackType('bug');setFeedbackStep(2);}}>
+                    <div className="fb-type-ico" style={{background:"#FEF2F2"}}><AlertCircle size={22} color="#DC2626" strokeWidth={2}/></div>
+                    <div className="fb-type-t">Report a Bug</div>
+                    <div className="fb-type-s">Something isn't working</div>
+                  </div>
+                  <div className={`fb-type-card${feedbackType==='idea'?' sel':''}`} onClick={()=>{setFeedbackType('idea');setFeedbackStep(2);}}>
+                    <div className="fb-type-ico" style={{background:"#FEF3C7"}}><Lightbulb size={22} color="#D97706" strokeWidth={2}/></div>
+                    <div className="fb-type-t">Share an Idea</div>
+                    <div className="fb-type-s">Help us improve Outfield</div>
+                  </div>
+                </div>
+                <button style={{width:"100%",padding:"12px 0",borderRadius:14,background:"var(--border2)",color:"var(--ink3)",fontWeight:600,fontSize:14,border:"none",cursor:"pointer",marginTop:8}} onClick={()=>setShowFeedback(false)}>Cancel</button>
+              </>) : (<>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+                  <button style={{background:"none",border:"none",cursor:"pointer",padding:0,display:"flex",alignItems:"center"}} onClick={()=>setFeedbackStep(1)}>
+                    <ArrowLeft size={20} color="var(--ink3)" strokeWidth={2}/>
+                  </button>
+                  <div className="cancel-title" style={{marginBottom:0}}>{feedbackType==='bug'?'Report a Bug':'Share an Idea'}</div>
+                </div>
+                {feedbackType==='bug' && (
+                  <select className="fb-screen-sel" value={feedbackScreen} onChange={e=>setFeedbackScreen(e.target.value)}>
+                    <option value="">Which screen? (optional)</option>
+                    <option value="Home">Home</option>
+                    <option value="Explore">Explore</option>
+                    <option value="Map">Map</option>
+                    <option value="Matchmaking">Matchmaking</option>
+                    <option value="Profile">Profile</option>
+                    <option value="Booking">Booking</option>
+                    <option value="Owner Form">Owner Form</option>
+                    <option value="Other">Other</option>
+                  </select>
+                )}
+                <textarea
+                  className="fb-textarea"
+                  rows={5}
+                  placeholder={feedbackType==='bug'
+                    ? "Describe what happened and what you expected... Which screen were you on?"
+                    : "Describe your idea — what would make Outfield better for you?"}
+                  value={feedbackMessage}
+                  onChange={e=>setFeedbackMessage(e.target.value)}
+                />
+                <button
+                  style={{width:"100%",padding:"14px 0",borderRadius:14,background: feedbackMessage.trim() ? "var(--green)" : "var(--border)",color: feedbackMessage.trim() ? "#fff" : "var(--ink4)",fontWeight:700,fontSize:15,border:"none",cursor: feedbackMessage.trim() ? "pointer" : "not-allowed",marginTop:12,transition:"all .15s"}}
+                  disabled={!feedbackMessage.trim()}
+                  onClick={async()=>{
+                    await supabase.from('feedback').insert({
+                      user_id: session?.user?.id || null,
+                      user_name: authUser?.name || 'Anonymous',
+                      user_email: session?.user?.email || null,
+                      type: feedbackType,
+                      message: feedbackMessage,
+                      screen: feedbackScreen || null,
+                      created_at: new Date().toISOString()
+                    });
+                    setShowFeedback(false);
+                    setFeedbackStep(1);setFeedbackType('');setFeedbackMessage('');setFeedbackScreen('');
+                    showToast("Thanks for your feedback! We read every single one.");
+                  }}>
+                  Submit
+                </button>
+                <button style={{width:"100%",padding:"11px 0",borderRadius:14,background:"var(--border2)",color:"var(--ink3)",fontWeight:600,fontSize:14,border:"none",cursor:"pointer",marginTop:8}} onClick={()=>setShowFeedback(false)}>Cancel</button>
+              </>)}
+            </div>
+          </div>
+        )}
 
         {/* ═══ CONTACT US SHEET ═══ */}
         {showContactSheet && (
