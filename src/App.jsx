@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS feedback (id uuid PRIMARY KEY DEFAULT gen_random_uuid
 import { useState, useEffect, useRef } from "react";
 import { supabase } from './supabase';
 import L from 'leaflet';
-import { MapContainer, TileLayer, Marker } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
   MapPin, Search, Bell, Star, Clock, ChevronRight, Heart,
@@ -1397,7 +1397,7 @@ input,select,textarea{font-size:16px !important;}
 .dm-toggle.off::after{left:3px;}
 
 /* ── MAP SCREEN ── */
-.map-screen{display:flex;flex-direction:column;flex:1;height:calc(100svh - 72px);position:relative;}
+.map-screen{display:flex;flex-direction:column;flex:1;height:100%;overflow:hidden;position:relative;}
 .map-pin{width:22px;height:22px;background:#22C55E;border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 10px rgba(34,197,94,.5);}
 .map-user-dot{width:14px;height:14px;background:#3B82F6;border:3px solid #fff;border-radius:50%;animation:pulse-blue 2s infinite;}
 @keyframes pulse-blue{0%{box-shadow:0 0 0 0 rgba(59,130,246,.6);}100%{box-shadow:0 0 0 16px rgba(59,130,246,0);}}
@@ -1569,6 +1569,15 @@ function LocationPicker({ lat, lng, onChange, darkMode }) {
   );
 }
 
+/* Flies the leaflet map to the user's GPS position when it becomes available */
+function FlyToUser({ pos }) {
+  const map = useMap();
+  useEffect(() => {
+    if (pos) map.flyTo(pos, 15, { animate: true, duration: 1.5 });
+  }, [pos]);
+  return null;
+}
+
 /* ─── MAP SCREEN COMPONENT ─── */
 function MapScreen({ grounds, darkMode, onBookGround }) {
   const [tileMode, setTileMode] = useState(() => darkMode ? 'dark' : 'osm');
@@ -1673,6 +1682,7 @@ function MapScreen({ grounds, darkMode, onBookGround }) {
         ) : null)}
 
         {userPos && <Marker position={userPos} icon={userIcon}/>}
+        <FlyToUser pos={userPos}/>
       </MapContainer>
 
       {/* Satellite toggle — only shown in light mode (or when override is active) */}
@@ -3465,7 +3475,7 @@ export default function Outfield() {
               </div>
 
               {/* MAP PANEL */}
-              <div style={{width:'20%',flexShrink:0,height:'calc(100svh - 72px)'}}>
+              <div style={{width:'20%',flexShrink:0,height:'calc(100dvh - 72px)',overflow:'hidden',display:'flex',flexDirection:'column'}}>
                 <div className="map-screen">
                   <MapScreen
                     grounds={dbGrounds.length > 0 ? dbGrounds : GROUNDS}
