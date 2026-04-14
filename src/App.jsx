@@ -1398,6 +1398,9 @@ input,select,textarea{font-size:16px !important;}
 
 /* ── MAP SCREEN ── */
 .map-screen{display:flex;flex-direction:column;flex:1;height:100%;overflow:hidden;position:relative;}
+/* Prevent black void showing when Leaflet is panned to world edges */
+.leaflet-container{background:#b9d4a8 !important;}
+.app.dark .leaflet-container{background:#1a2035 !important;}
 .map-pin{width:22px;height:22px;background:#22C55E;border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 10px rgba(34,197,94,.5);}
 .map-user-dot{width:14px;height:14px;background:#3B82F6;border:3px solid #fff;border-radius:50%;animation:pulse-blue 2s infinite;}
 @keyframes pulse-blue{0%{box-shadow:0 0 0 0 rgba(59,130,246,.6);}100%{box-shadow:0 0 0 16px rgba(59,130,246,0);}}
@@ -1669,6 +1672,9 @@ function MapScreen({ grounds, darkMode, onBookGround }) {
         zoom={12}
         style={{height:'100%', width:'100%'}}
         zoomControl={false}
+        minZoom={3}
+        maxBounds={[[-85.051129, -180], [85.051129, 180]]}
+        maxBoundsViscosity={1.0}
       >
         <TileLayer key={activeTile} url={TILES[activeTile].url} attribution={TILES[activeTile].attr}/>
 
