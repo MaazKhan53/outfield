@@ -2069,7 +2069,9 @@ export default function Outfield() {
         name: authName,
         phone: authPhone,
         role: authRole,
-        city: authCity
+        city: authCity,
+        dob: authDob,
+        age: calcAge(authDob)
       });
       setAuthUser({ name: authName, phone: authPhone, role: authRole, city: authCity, dob: authDob, age });
     }
