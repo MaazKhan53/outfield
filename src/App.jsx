@@ -1581,21 +1581,22 @@ function FlyToUser({ pos }) {
   return null;
 }
 
-/* Forces Leaflet to recalculate container size whenever the map tab becomes visible.
-   Without this, the tile grid leaves blank edges after the tab-slide animation. */
-function ResizeMap({ active }) {
+/* Watches the Leaflet container with a ResizeObserver so invalidateSize() is called
+   on every real DOM size change — tab slides, dark-mode toggles, iOS toolbar show/hide.
+   No timeouts, no dependency guessing. */
+function ResizeMap() {
   const map = useMap();
   useEffect(() => {
-    if (!active) return;
-    // Wait for the CSS slide transition (320 ms) then invalidate
-    const t = setTimeout(() => map.invalidateSize(), 350);
-    return () => clearTimeout(t);
-  }, [active]);
+    const container = map.getContainer();
+    const ro = new ResizeObserver(() => map.invalidateSize({ pan: false }));
+    ro.observe(container);
+    return () => ro.disconnect();
+  }, [map]);
   return null;
 }
 
 /* ─── MAP SCREEN COMPONENT ─── */
-function MapScreen({ grounds, darkMode, onBookGround, isActive }) {
+function MapScreen({ grounds, darkMode, onBookGround }) {
   const [tileMode, setTileMode] = useState(() => darkMode ? 'dark' : 'osm');
   const [userPos,  setUserPos]  = useState(null);
   const [selected, setSelected] = useState(null);
@@ -1702,7 +1703,7 @@ function MapScreen({ grounds, darkMode, onBookGround, isActive }) {
 
         {userPos && <Marker position={userPos} icon={userIcon}/>}
         <FlyToUser pos={userPos}/>
-        <ResizeMap active={isActive}/>
+        <ResizeMap/>
       </MapContainer>
 
       {/* Satellite toggle — only shown in light mode (or when override is active) */}
@@ -3501,7 +3502,6 @@ export default function Outfield() {
                     grounds={dbGrounds.length > 0 ? dbGrounds : GROUNDS}
                     darkMode={darkMode}
                     onBookGround={(g) => { setGround(g); setScreen("ground"); }}
-                    isActive={nav === 'map'}
                   />
                 </div>
               </div>
