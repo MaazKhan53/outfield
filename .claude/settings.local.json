@@ -6,7 +6,9 @@
       "Bash(git push:*)",
       "Bash(npm run:*)",
       "Bash(node:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(grep -n '`;' \"/c/Users/Lenevo/OneDrive/Documents/GitHub/outfield/src/App.jsx\")",
+      "Bash(git commit:*)"
     ]
   }
 }

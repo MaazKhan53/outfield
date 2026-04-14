@@ -1402,6 +1402,18 @@ input,select,textarea{font-size:16px !important;}
 .map-user-dot{width:14px;height:14px;background:#3B82F6;border:3px solid #fff;border-radius:50%;animation:pulse-blue 2s infinite;}
 @keyframes pulse-blue{0%{box-shadow:0 0 0 0 rgba(59,130,246,.6);}100%{box-shadow:0 0 0 16px rgba(59,130,246,0);}}
 .map-tile-btn{position:absolute;top:14px;right:14px;z-index:999;background:rgba(255,255,255,.95);border:1px solid rgba(0,0,0,.12);border-radius:100px;padding:7px 14px;font-size:12px;font-weight:700;font-family:'Inter',sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.15);}
+/* ── LOAD SHEDDING EASTER EGG ── */
+@keyframes lsDropIn{0%{transform:translateY(-80px) translateX(-50%);opacity:0;}18%{transform:translateY(4px) translateX(-50%);opacity:1;}28%{transform:translateY(-2px) translateX(-50%);}36%{transform:translateY(0) translateX(-50%);}100%{transform:translateY(0) translateX(-50%);}}
+@keyframes lsExpand{0%{max-width:44px;padding:7px 10px;}40%{max-width:200px;padding:7px 14px;}100%{max-width:200px;padding:7px 14px;}}
+@keyframes lsShrink{0%{max-width:200px;padding:7px 14px;left:50%;transform:translateX(-50%);}100%{max-width:44px;padding:7px 10px;left:14px;transform:translateX(0);}}
+@keyframes lsRest{0%{left:14px;transform:translateX(0);}100%{left:14px;transform:translateX(0);}}
+@keyframes candleFlicker{0%,100%{opacity:1;}20%{opacity:.6;}40%{opacity:1;}55%{opacity:.4;}70%{opacity:1;}85%{opacity:.7;}}
+.ls-pill{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:1000;background:rgba(17,24,39,.92);color:#FCD34D;border:1px solid rgba(252,211,77,.25);border-radius:100px;padding:7px 14px;font-size:12px;font-weight:700;font-family:'Inter',sans-serif;cursor:pointer;box-shadow:0 4px 20px rgba(0,0,0,.4);white-space:nowrap;overflow:hidden;display:flex;align-items:center;gap:5px;transition:background .2s;}
+.ls-pill.animating{animation:lsDropIn .55s cubic-bezier(.34,1.28,.64,1) forwards, lsExpand .4s .55s ease forwards;}
+.ls-pill.shrinking{animation:lsShrink .45s .05s cubic-bezier(.4,0,.2,1) forwards;}
+.ls-pill.resting{left:14px;transform:translateX(0);}
+.ls-candle{display:inline-block;animation:candleFlicker 1.8s ease-in-out infinite;}
+.ls-pill.bijli{background:rgba(17,24,39,.92);color:#FDE68A;border-color:rgba(253,230,138,.3);}
 .map-popup{position:absolute;bottom:14px;left:14px;right:14px;z-index:999;background:#fff;border-radius:18px;padding:16px;box-shadow:0 8px 32px rgba(0,0,0,.2);}
 .map-popup-close{position:absolute;top:12px;right:12px;width:26px;height:26px;border-radius:50%;background:var(--border2);border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink3);}
 .map-popup-name{font-family:'Sora',sans-serif;font-size:15px;font-weight:800;color:var(--ink);margin-bottom:4px;padding-right:28px;}
@@ -1562,12 +1574,44 @@ function MapScreen({ grounds, darkMode, onBookGround }) {
   const [tileMode, setTileMode] = useState(() => darkMode ? 'dark' : 'osm');
   const [userPos,  setUserPos]  = useState(null);
   const [selected, setSelected] = useState(null);
+  // Load shedding easter egg
+  const [lsOverride, setLsOverride]   = useState(false);   // user toggled map light while app is dark
+  const [lsPillState, setLsPillState] = useState('hidden'); // hidden | animating | shrinking | resting
+  const lsAnimTimers = useRef([]);
+  const lsShownRef   = useRef(false); // only animate once per dark-mode session
 
   // Sync tile with dark mode changes
   useEffect(() => {
-    if (darkMode) setTileMode('dark');
-    else setTileMode(prev => prev === 'dark' ? 'osm' : prev);
+    if (darkMode) {
+      if (!lsOverride) setTileMode('dark');
+    } else {
+      setTileMode(prev => prev === 'dark' ? 'osm' : prev);
+      setLsOverride(false);
+      setLsPillState('hidden');
+      lsShownRef.current = false;
+    }
   }, [darkMode]);
+
+  // Trigger entrance animation when map is dark and pill hasn't shown yet
+  useEffect(() => {
+    if (darkMode && !lsOverride && lsPillState === 'hidden' && !lsShownRef.current) {
+      lsShownRef.current = true;
+      // Small delay so map has painted first
+      const t1 = setTimeout(() => {
+        setLsPillState('animating');
+        // After drop+expand animation (0.55s + 0.4s = 0.95s), wait 3s showing full pill, then shrink
+        const t2 = setTimeout(() => {
+          setLsPillState('shrinking');
+          // After shrink animation (0.45s) set to resting
+          const t3 = setTimeout(() => setLsPillState('resting'), 500);
+          lsAnimTimers.current.push(t3);
+        }, 0.95 * 1000 + 3000);
+        lsAnimTimers.current.push(t2);
+      }, 400);
+      lsAnimTimers.current.push(t1);
+    }
+    return () => { lsAnimTimers.current.forEach(clearTimeout); lsAnimTimers.current = []; };
+  }, [darkMode, lsOverride]);
 
   // Request GPS once on mount
   useEffect(() => {
@@ -1583,8 +1627,31 @@ function MapScreen({ grounds, darkMode, onBookGround }) {
     dark:      { url: 'https://cartodb-basemaps-a.global.ssl.fastly.net/dark_all/{z}/{x}/{y}.png',                    attr: '© CartoDB' },
   };
 
+  // Resolve which tile to actually show (lsOverride forces osm even in dark mode)
+  const activeTile = darkMode && !lsOverride ? 'dark' : tileMode === 'dark' ? 'osm' : tileMode;
+
   const greenIcon = L.divIcon({ className:'', html:'<div class="map-pin"></div>',      iconSize:[28,36], iconAnchor:[14,36] });
   const userIcon  = L.divIcon({ className:'', html:'<div class="map-user-dot"></div>', iconSize:[20,20], iconAnchor:[10,10] });
+
+  const handleLsPillTap = () => {
+    // Clear any pending intro animations
+    lsAnimTimers.current.forEach(clearTimeout);
+    lsAnimTimers.current = [];
+    if (!lsOverride) {
+      // Turn on the lights!
+      setLsOverride(true);
+      setTileMode('osm');
+      setLsPillState('resting');
+    } else {
+      // Back to load shedding
+      setLsOverride(false);
+      setTileMode('dark');
+      setLsPillState('resting');
+    }
+  };
+
+  const lsPillVisible = darkMode && lsPillState !== 'hidden';
+  const lsPillClass = `ls-pill${lsOverride ? ' bijli' : ''}${lsPillState === 'animating' ? ' animating' : lsPillState === 'shrinking' ? ' shrinking' : lsPillState === 'resting' ? ' resting' : ''}`;
 
   return (
     <div style={{position:'relative', flex:1, overflow:'hidden', height:'100%'}}>
@@ -1594,7 +1661,7 @@ function MapScreen({ grounds, darkMode, onBookGround }) {
         style={{height:'100%', width:'100%'}}
         zoomControl={false}
       >
-        <TileLayer key={tileMode} url={TILES[tileMode].url} attribution={TILES[tileMode].attr}/>
+        <TileLayer key={activeTile} url={TILES[activeTile].url} attribution={TILES[activeTile].attr}/>
 
         {grounds.map(g => g.latitude && g.longitude ? (
           <Marker
@@ -1608,11 +1675,22 @@ function MapScreen({ grounds, darkMode, onBookGround }) {
         {userPos && <Marker position={userPos} icon={userIcon}/>}
       </MapContainer>
 
-      {/* Satellite toggle — only shown in light mode */}
-      {!darkMode && (
+      {/* Satellite toggle — only shown in light mode (or when override is active) */}
+      {(!darkMode || lsOverride) && (
         <button className="map-tile-btn"
           onClick={() => setTileMode(t => t === 'satellite' ? 'osm' : 'satellite')}>
           {tileMode === 'satellite' ? '🗺 Map' : '🛰 Satellite'}
+        </button>
+      )}
+
+      {/* ── Load Shedding Easter Egg pill ── */}
+      {lsPillVisible && (
+        <button className={lsPillClass} onClick={handleLsPillTap}>
+          {lsOverride ? (
+            <>✨ Bijli Aa Gai</>
+          ) : (
+            <><span className="ls-candle">🕯️</span> Load Shedding Map</>
+          )}
         </button>
       )}
 
