@@ -698,12 +698,8 @@ input,select,textarea{font-size:16px !important;}
 .section-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
 .section-title{font-family:'Sora',sans-serif;font-size:14px;font-weight:800;color:var(--ink);letter-spacing:-.1px;}
 .section-link{font-size:12px;font-weight:600;color:var(--green);cursor:pointer;display:flex;align-items:center;gap:2px;}
-.hero-scroll-wrap{overflow:hidden;width:100%;cursor:grab;user-select:none;}
-.hero-scroll-wrap:active{cursor:grabbing;}
+.hero-scroll-wrap{overflow:hidden;width:100%;user-select:none;}
 .hero-scroll{display:flex;gap:12px;padding-bottom:4px;width:max-content;will-change:transform;}
-.hero-scroll.auto-mode{animation:heroSlide 22s linear infinite;}
-.hero-scroll.auto-mode:hover{animation-play-state:paused;}
-@keyframes heroSlide{0%{transform:translateX(0);}100%{transform:translateX(-50%);}}
 .hero-card{flex-shrink:0;width:248px;border-radius:var(--r);overflow:hidden;position:relative;cursor:pointer;box-shadow:var(--s2);transition:transform .22s;}
 .hero-card:hover{transform:translateY(-3px) scale(1.01);}
 .hero-card:active{transform:scale(.98);}
@@ -1729,15 +1725,15 @@ export default function Outfield() {
   const touchStartY           = useRef(null);
   const swipeIgnored          = useRef(false);
   const heroScrollRef         = useRef(null);
-  const heroDragStartX        = useRef(null);
-  const heroDragScrollLeft    = useRef(0);
-  const heroAutoResumeRef     = useRef(null);
+  const heroOffsetRef         = useRef(0);
+  const heroAnimFrameRef      = useRef(null);
   const heroVelocityRef       = useRef(0);
-  const heroLastX             = useRef(null);
-  const heroLastTime          = useRef(null);
   const heroIsDragging        = useRef(false);
-  const heroAnimOffset        = useRef(0);
-  const heroManualMode        = useRef(false);
+  const heroDragStartX        = useRef(0);
+  const heroDragStartOffset   = useRef(0);
+  const heroLastX             = useRef(0);
+  const heroLastTime          = useRef(0);
+  const heroIsDecelerating    = useRef(false);
 
   // Tab order for swipe navigation
   const TAB_ORDER = ["home","explore","map","match","profile"];
@@ -2062,57 +2058,68 @@ export default function Outfield() {
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2700); };
 
-  const heroStartDrag = (clientX) => {
+  useEffect(() => {
+    const el = heroScrollRef.current;
+    if (!el) return;
+    const AUTO_SPEED = 0.5;
+    const getHalfWidth = () => el.scrollWidth / 2;
+    const animate = () => {
+      if (!heroIsDragging.current && !heroIsDecelerating.current) {
+        heroOffsetRef.current -= AUTO_SPEED;
+        if (Math.abs(heroOffsetRef.current) >= getHalfWidth()) heroOffsetRef.current = 0;
+        el.style.transform = `translateX(${heroOffsetRef.current}px)`;
+      }
+      heroAnimFrameRef.current = requestAnimationFrame(animate);
+    };
+    heroAnimFrameRef.current = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(heroAnimFrameRef.current);
+  }, []);
+
+  const heroPointerDown = (clientX) => {
     heroIsDragging.current = true;
-    heroManualMode.current = true;
+    heroIsDecelerating.current = false;
     heroDragStartX.current = clientX;
+    heroDragStartOffset.current = heroOffsetRef.current;
     heroLastX.current = clientX;
-    heroLastTime.current = Date.now();
+    heroLastTime.current = performance.now();
     heroVelocityRef.current = 0;
-    clearTimeout(heroAutoResumeRef.current);
-    if (heroScrollRef.current) {
-      heroScrollRef.current.classList.remove('auto-mode');
-      const computedStyle = window.getComputedStyle(heroScrollRef.current);
-      const matrix = new DOMMatrix(computedStyle.transform);
-      heroAnimOffset.current = matrix.m41 || 0;
-      heroDragScrollLeft.current = heroAnimOffset.current;
-      heroScrollRef.current.style.transform = `translateX(${heroAnimOffset.current}px)`;
-    }
   };
 
-  const heroMoveDrag = (clientX) => {
+  const heroPointerMove = (clientX) => {
     if (!heroIsDragging.current || !heroScrollRef.current) return;
-    const now = Date.now();
-    const dt = now - (heroLastTime.current || now);
-    const dx = clientX - (heroLastX.current || clientX);
-    if (dt > 0) heroVelocityRef.current = dx / dt;
+    const now = performance.now();
+    const dt = now - heroLastTime.current;
+    if (dt > 0) heroVelocityRef.current = (clientX - heroLastX.current) / dt;
     heroLastX.current = clientX;
     heroLastTime.current = now;
-    const totalDx = clientX - heroDragStartX.current;
-    const newPos = heroDragScrollLeft.current + totalDx;
-    heroScrollRef.current.style.transform = `translateX(${newPos}px)`;
+    const delta = clientX - heroDragStartX.current;
+    heroOffsetRef.current = heroDragStartOffset.current + delta;
+    const half = heroScrollRef.current.scrollWidth / 2;
+    if (heroOffsetRef.current > 0) heroOffsetRef.current -= half;
+    if (heroOffsetRef.current < -half) heroOffsetRef.current += half;
+    heroScrollRef.current.style.transform = `translateX(${heroOffsetRef.current}px)`;
   };
 
-  const heroEndDrag = () => {
-    if (!heroIsDragging.current || !heroScrollRef.current) return;
+  const heroPointerUp = () => {
+    if (!heroIsDragging.current) return;
     heroIsDragging.current = false;
     const velocity = heroVelocityRef.current;
-    const computedStyle = window.getComputedStyle(heroScrollRef.current);
-    const matrix = new DOMMatrix(computedStyle.transform);
-    let currentPos = matrix.m41 || 0;
-    const momentumDuration = 600;
-    const momentumDistance = velocity * momentumDuration * 0.3;
-    const targetPos = currentPos + momentumDistance;
-    heroScrollRef.current.style.transition = `transform ${momentumDuration}ms cubic-bezier(0.25, 0.46, 0.45, 0.94)`;
-    heroScrollRef.current.style.transform = `translateX(${targetPos}px)`;
-    heroAutoResumeRef.current = setTimeout(() => {
-      if (heroScrollRef.current) {
-        heroScrollRef.current.style.transition = '';
-        heroScrollRef.current.style.transform = '';
-        heroScrollRef.current.classList.add('auto-mode');
-        heroManualMode.current = false;
-      }
-    }, momentumDuration + 2500);
+    if (Math.abs(velocity) > 0.1) {
+      heroIsDecelerating.current = true;
+      let v = velocity * 8;
+      const decelerate = () => {
+        if (!heroScrollRef.current) return;
+        heroOffsetRef.current += v;
+        v *= 0.92;
+        const half = heroScrollRef.current.scrollWidth / 2;
+        if (heroOffsetRef.current > 0) heroOffsetRef.current -= half;
+        if (heroOffsetRef.current < -half) heroOffsetRef.current += half;
+        heroScrollRef.current.style.transform = `translateX(${heroOffsetRef.current}px)`;
+        if (Math.abs(v) > 0.2) requestAnimationFrame(decelerate);
+        else heroIsDecelerating.current = false;
+      };
+      requestAnimationFrame(decelerate);
+    }
   };
 
   const PAKISTAN_CITIES = [
@@ -2983,14 +2990,15 @@ export default function Outfield() {
                 </div>
               </div>
               <div className="hero-scroll-wrap" data-swipe-ignore="true"
-                onMouseDown={(e)=>heroStartDrag(e.clientX)}
-                onMouseMove={(e)=>{ if(heroIsDragging.current) heroMoveDrag(e.clientX); }}
-                onMouseUp={heroEndDrag}
-                onMouseLeave={heroEndDrag}
-                onTouchStart={(e)=>{ e.stopPropagation(); heroStartDrag(e.touches[0].clientX); }}
-                onTouchMove={(e)=>{ e.stopPropagation(); heroMoveDrag(e.touches[0].clientX); }}
-                onTouchEnd={(e)=>{ e.stopPropagation(); heroEndDrag(); }}>
-                <div className="hero-scroll auto-mode" ref={heroScrollRef}>
+                style={{cursor: heroIsDragging.current ? 'grabbing' : 'grab'}}
+                onMouseDown={(e)=>heroPointerDown(e.clientX)}
+                onMouseMove={(e)=>heroPointerMove(e.clientX)}
+                onMouseUp={heroPointerUp}
+                onMouseLeave={heroPointerUp}
+                onTouchStart={(e)=>{ e.stopPropagation(); heroPointerDown(e.touches[0].clientX); }}
+                onTouchMove={(e)=>{ e.stopPropagation(); heroPointerMove(e.touches[0].clientX); }}
+                onTouchEnd={(e)=>{ e.stopPropagation(); heroPointerUp(); }}>
+                <div className="hero-scroll" ref={heroScrollRef}>
                   {[...featGrounds, ...featGrounds].map((g,i) => {
                     return (
                       <div key={i} className="hero-card" onClick={()=>openGround(g)}>
