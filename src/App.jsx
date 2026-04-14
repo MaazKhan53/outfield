@@ -2059,14 +2059,13 @@ export default function Outfield() {
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2700); };
 
   useEffect(() => {
-    const el = heroScrollRef.current;
-    if (!el) return;
     const AUTO_SPEED = 0.5;
-    const getHalfWidth = () => el.scrollWidth / 2;
     const animate = () => {
-      if (!heroIsDragging.current && !heroIsDecelerating.current) {
+      const el = heroScrollRef.current;
+      if (el && !heroIsDragging.current && !heroIsDecelerating.current) {
         heroOffsetRef.current -= AUTO_SPEED;
-        if (heroOffsetRef.current < -getHalfWidth()) heroOffsetRef.current += getHalfWidth();
+        const half = el.scrollWidth / 2;
+        if (heroOffsetRef.current < -half) heroOffsetRef.current += half;
         el.style.transform = `translateX(${heroOffsetRef.current}px)`;
       }
       heroAnimFrameRef.current = requestAnimationFrame(animate);
