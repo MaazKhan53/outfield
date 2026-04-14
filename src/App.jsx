@@ -263,6 +263,35 @@ const generateDates = () => {
 };
 const DATES = generateDates();
 
+/* ─── Real slot generator ─── */
+const generateTimeSlots = (openFrom, openTill, slotDurationMins, priceBase, pricePeak) => {
+  const slots = [];
+  const [startH, startM] = (openFrom || '06:00').split(':').map(Number);
+  const [endH, endM]     = (openTill  || '23:00').split(':').map(Number);
+  const duration = slotDurationMins || 120;
+  let currentMins = startH * 60 + startM;
+  const endMins   = endH * 60 + endM;
+  while (currentMins + duration <= endMins) {
+    const fromH = Math.floor(currentMins / 60).toString().padStart(2, '0');
+    const fromM = (currentMins % 60).toString().padStart(2, '0');
+    const toMins = currentMins + duration;
+    const toH = Math.floor(toMins / 60).toString().padStart(2, '0');
+    const toM = (toMins % 60).toString().padStart(2, '0');
+    const isPeak = currentMins >= 17 * 60;
+    slots.push({
+      time:      `${fromH}:${fromM}–${toH}:${toM}`,
+      startTime: `${fromH}:${fromM}`,
+      endTime:   `${toH}:${toM}`,
+      price:     isPeak ? (pricePeak || priceBase || 2000) : (priceBase || 2000),
+      booked:    false,
+      blocked:   false,
+      lfp:       false
+    });
+    currentMins += duration;
+  }
+  return slots;
+};
+
 const AMENITY_ICONS = {
   "Floodlit":      Lightbulb,
   "Parking":       Car,
@@ -1102,6 +1131,7 @@ input,select,textarea{font-size:16px !important;}
 
 .fade{animation:fadeup .22s ease;}
 @keyframes fadeup{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
 
 /* ── OWNER DASHBOARD ── */
 .odash-head{background:var(--ink);padding:52px 18px 24px;position:relative;overflow:hidden;}
@@ -1634,6 +1664,20 @@ export default function Outfield() {
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   // Feature 11 — ground of the week
   const [groundOfWeek, setGroundOfWeek]           = useState(null);
+  // Real slot system
+  const [realSlots, setRealSlots]     = useState([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  // Feature: notifications
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications]         = useState([]);
+  const [notifLoading, setNotifLoading]           = useState(false);
+  // Feature: city filter
+  const [filterCity, setFilterCity]               = useState("all");
+  // Feature: photo upload URLs
+  const [uploadedImgUrls, setUploadedImgUrls]     = useState([]);
+  const [photoUploading, setPhotoUploading]       = useState(false);
+  // Feature: owner listing email state
+  const [ownerSubmitSuccess, setOwnerSubmitSuccess] = useState(false);
   const MAX_BOOKINGS = 2;
   const [dbGrounds, setDbGrounds]             = useState([]);
   const [bookedSlotKeys, setBookedSlotKeys]   = useState(new Set());
@@ -1854,6 +1898,54 @@ export default function Outfield() {
     supabase.from('grounds').select('*').eq('status','live').order('rating',{ascending:false}).limit(1)
       .then(({ data }) => { if (data && data[0]) setGroundOfWeek(data[0]); });
   }, []);
+
+  // Sync city filter default when authUser loads
+  useEffect(() => {
+    if (authUser?.city) setFilterCity(authUser.city);
+  }, [authUser]);
+
+  // fetchRealSlots: generate + overlay bookings/blocks from Supabase
+  const fetchRealSlots = async (groundObj, courtObj, selectedDate) => {
+    setSlotsLoading(true);
+    const activeGround = groundObj || ground;
+    const activeCourt  = courtObj  || court;
+    if (!activeGround) { setSlotsLoading(false); return; }
+
+    const openFrom  = activeGround.openFrom || activeGround.open_from || '06:00';
+    const openTill  = activeGround.openTill || activeGround.open_till || '23:00';
+    const duration  = activeCourt?.slot_duration_mins || 120;
+    const priceBase = activeCourt?.price_base || activeCourt?.priceBase || activeGround.priceFrom || 2000;
+    const pricePeak = activeCourt?.price_peak || activeCourt?.pricePeak || priceBase;
+
+    let generated = generateTimeSlots(openFrom, openTill, duration, priceBase, pricePeak);
+
+    const courtId   = activeCourt?.id;
+    const isRealId  = courtId && typeof courtId === 'string' && courtId.includes('-');
+
+    if (isRealId && selectedDate) {
+      const [bookedRes, blockedRes] = await Promise.all([
+        supabase.from('bookings').select('start_time').eq('court_id', courtId).eq('booking_date', selectedDate).eq('status', 'confirmed'),
+        supabase.from('blocked_slots').select('start_time').eq('court_id', courtId).eq('date', selectedDate)
+      ]);
+      const bookedTimes  = new Set((bookedRes.data  || []).map(b => b.start_time));
+      const blockedTimes = new Set((blockedRes.data || []).map(b => b.start_time));
+      generated = generated.map(s => ({
+        ...s,
+        booked:  bookedTimes.has(s.startTime),
+        blocked: blockedTimes.has(s.startTime)
+      }));
+    }
+
+    setRealSlots(generated);
+    setSlotsLoading(false);
+  };
+
+  // Re-fetch whenever date or court changes while on the detail screen
+  useEffect(() => {
+    if (screen === 'detail' && ground) {
+      fetchRealSlots(ground, court, date);
+    }
+  }, [date, court]);
 
   // Leaderboard — top 10 active players this month
   useEffect(() => {
@@ -2122,8 +2214,8 @@ export default function Outfield() {
     setBookingCount(p => p + 1);
     if (session?.user && ground.id && typeof ground.id === 'string' && ground.id.includes('-')) {
       const ref = "OTF-" + Math.random().toString(36).substring(2,6).toUpperCase();
-      const timeFrom = curSlot.time?.split("–")[0] || "00:00";
-      const timeTo   = curSlot.time?.split("–")[1] || "02:00";
+      const timeFrom = curSlot.startTime || curSlot.time?.split("–")[0] || "00:00";
+      const timeTo   = curSlot.endTime   || curSlot.time?.split("–")[1] || "02:00";
       const courtId  = court?.id || null;
       await supabase.from('bookings').insert({
         court_id:       courtId,
@@ -2138,9 +2230,21 @@ export default function Outfield() {
         booking_ref:    ref,
         lfp_on:         lfp
       });
-      // Mark slot as booked locally so UI updates immediately
-      const key = `${courtId}_${date}_${timeFrom}`;
-      setBookedSlotKeys(prev => new Set([...prev, key]));
+      // Mark slot as booked immediately in local state
+      setRealSlots(prev => prev.map(s => s.startTime === timeFrom ? {...s, booked: true} : s));
+      setBookedSlotKeys(prev => new Set([...prev, `${courtId}_${date}_${timeFrom}`]));
+      // Feature 2: Insert announcement for the owner so they see it in dashboard
+      // Find owner_id from ground data
+      supabase.from('grounds').select('owner_id, name').eq('id', ground.id).single()
+        .then(({ data: gd }) => {
+          if (gd?.owner_id) {
+            supabase.from('announcements').insert({
+              owner_id: gd.owner_id,
+              ground_id: ground.id,
+              message: `New booking received for ${gd.name} on ${date} at ${curSlot.time} — ${authUser?.name || 'A player'}`
+            });
+          }
+        });
     }
     setScreen("success");
   };
@@ -2161,6 +2265,8 @@ export default function Outfield() {
   const filtered = activeGrounds.filter(g => {
     const ms = sport === "all" || g.sports.includes(sport);
     const mq = !search || g.name.toLowerCase().includes(search.toLowerCase()) || g.area.toLowerCase().includes(search.toLowerCase());
+    // City filter
+    const mc = filterCity === "all" || !g.city || g.city === filterCity;
     // Time filter — check if any slot in the ground falls within the selected time range
     let mt = true;
     if (timeFilterFrom && timeFilterTo) {
@@ -2173,7 +2279,7 @@ export default function Outfield() {
         return slotFrom >= timeFilterFrom && slotFrom < timeFilterTo;
       });
     }
-    return ms && mq && mt;
+    return ms && mq && mc && mt;
   });
 
   const curSlot  = ground && slot !== null ? getSlots(ground, date)[slot] : null;
@@ -2185,37 +2291,28 @@ export default function Outfield() {
   );
 
   const openGround = (g) => {
-    setGround(g); setCourt(null); setSlot(null); setLfp(false); setScreen("detail");
-    setBookedSlotKeys(new Set());
-    // Fetch confirmed bookings for this ground's courts only
-    if (g.id && typeof g.id === 'string' && g.id.includes('-')) {
-      supabase
-        .from('courts')
-        .select('id')
-        .eq('ground_id', g.id)
-        .then(({ data: courts }) => {
-          const courtIds = (courts || []).map(c => c.id);
-          if (courtIds.length === 0) return;
-          supabase
-            .from('bookings')
-            .select('court_id, booking_date, start_time')
-            .eq('status', 'confirmed')
-            .in('court_id', courtIds)
-            .then(({ data }) => {
-              if (data) {
-                const keys = new Set(data.map(b => `${b.court_id}_${b.booking_date}_${b.start_time}`));
-                setBookedSlotKeys(keys);
-              }
-            });
+    setGround(g);
+    setCourt(null);
+    setSlot(null);
+    setLfp(false);
+    setScreen('detail');
+    setRealSlots([]);
+    // For non-facility DB grounds, fetch first court to get pricing/duration
+    if (g.id && typeof g.id === 'string' && g.id.includes('-') && !g.isFacility) {
+      supabase.from('courts').select('*').eq('ground_id', g.id).limit(1)
+        .then(({ data }) => {
+          const firstCourt = data?.[0] || null;
+          fetchRealSlots(g, firstCourt, date);
         });
+    } else {
+      fetchRealSlots(g, null, date);
     }
   };
   const activeCourt = ground?.isFacility ? court : null;
   const getSlots = (g, d) => {
-    if (g?.isFacility && court) {
-      return court.slots?.[d] || court.slots?.["Mar 10"] || [];
-    }
-    return g?.slots?.[d] || g?.slots?.["Mar 10"] || [];
+    if (realSlots.length > 0) return realSlots;
+    if (g?.isFacility && court) return court.slots?.[d] || court.slots?.['Mar 10'] || [];
+    return g?.slots?.[d] || g?.slots?.['Mar 10'] || [];
   };
 
   const featGrounds = [...activeGrounds].sort((a,b) => b.rating-a.rating).slice(0,5);
@@ -3492,7 +3589,7 @@ export default function Outfield() {
                         const freeSlots = (c.slots?.["Mar 10"]||[]).filter(s=>!s.booked).length;
                         return (
                           <div key={c.id} className={`court-pick-card ${court?.id===c.id?"sel":""}`}
-                            onClick={()=>{setCourt(c);setSlot(null);}}>
+                            onClick={()=>{setCourt(c);setSlot(null);fetchRealSlots(ground,c,date);}}>
                             <div className="court-pick-ico" style={{background:`${sp.bg}25`}}>
                               <NeonSportIcon id={c.sports[0]} color={sp.neon} size={22}/>
                             </div>
@@ -3560,39 +3657,45 @@ export default function Outfield() {
                   <div className="sl"><div className="sl-sq" style={{background:"#FCA5A5"}}/>Booked</div>
                   <div className="sl"><div className="sl-sq" style={{background:"var(--orange)"}}/>Need Players</div>
                   <div style={{marginLeft:"auto",fontSize:10,color:"var(--green-d)",fontWeight:700}}>
-                    {getSlots(ground,date).filter(s=>{
-                      const cId = ground?.isFacility ? court?.id : null;
-                      const sf = s.time?.split("–")[0]||"";
-                      return !s.booked && !bookedSlotKeys.has(`${cId}_${date}_${sf}`);
-                    }).length} free
+                    {slotsLoading ? "…" : `${getSlots(ground,date).filter(s=>!s.booked&&!s.blocked).length} free`}
                   </div>
                 </div>
                 <div className="late-badge" style={{marginBottom:10}}>
                   <Clock size={10} strokeWidth={2}/> Late booking allowed up to 10 mins into slot
                 </div>
+                {/* Loading skeleton */}
+                {slotsLoading ? (
+                  <div className="slots-grid">
+                    {Array.from({length:6}).map((_,i)=>(
+                      <div key={i} style={{borderRadius:13,padding:12,background:"var(--border2)",border:"1.5px solid var(--border)",minHeight:72,animation:"pulse 1.2s ease-in-out infinite"}}/>
+                    ))}
+                  </div>
+                ) : (
                 <div className="slots-grid">
                   {getSlots(ground,date).map((s,i)=>{
-                    // Check both static data and live DB booked keys
-                    const courtIdForKey = ground?.isFacility ? court?.id : null;
-                    const slotFrom = s.time?.split("–")[0] || "";
-                    const dbKey = `${courtIdForKey}_${date}_${slotFrom}`;
-                    const isDbBooked = bookedSlotKeys.has(dbKey);
-                    const effectiveBooked = s.booked || isDbBooked;
-                    const isLfp = effectiveBooked && s.lfp && !isDbBooked;
-                    const jk = `d-${ground.id}-${date}-${i}`;
-                    const jnd = joined[jk];
-                    const spotsLeft = Math.max(0,(s.need||0)-(s.joined||0)-(jnd?1:0));
+                    const isBlocked       = s.blocked === true;
+                    const isBooked        = s.booked  === true;
+                    const isLfp           = isBooked && s.lfp && !isBlocked;
+                    const jk              = `d-${ground.id}-${date}-${i}`;
+                    const jnd             = joined[jk];
+                    const spotsLeft       = Math.max(0,(s.need||0)-(s.joined||0)-(jnd?1:0));
+                    const clickable       = !isBooked && !isBlocked;
                     return (
                       <div key={i}
-                        className={`slot-card ${isLfp?"lfp":effectiveBooked?"bkd":"free"} ${slot===i?"sel":""}`}
-                        onClick={()=>{if(!effectiveBooked)setSlot(slot===i?null:i);}}>
+                        className={`slot-card ${isBlocked?"bkd":isLfp?"lfp":isBooked?"bkd":"free"} ${slot===i?"sel":""}`}
+                        style={!clickable?{cursor:"not-allowed"}:{}}
+                        onClick={()=>{ if(clickable) setSlot(slot===i?null:i); }}>
                         <div className="slot-time">{s.time}</div>
-                        <div className="slot-status" style={{color:isLfp?"var(--orange)":effectiveBooked?"var(--ink4)":"var(--green)"}}>
-                          {isLfp ? (
+                        <div className="slot-status" style={{color:isBlocked?"#9CA3AF":isLfp?"var(--orange)":isBooked?"var(--ink4)":"var(--green)"}}>
+                          {isBlocked ? (
+                            <span style={{display:"flex",alignItems:"center",gap:3}}>
+                              <Lock size={10} strokeWidth={2.5}/>Unavailable
+                            </span>
+                          ) : isLfp ? (
                             <span style={{display:"flex",alignItems:"center",gap:3}}>
                               <UserPlus size={10} strokeWidth={2}/>Need Players
                             </span>
-                          ) : effectiveBooked ? (
+                          ) : isBooked ? (
                             <span style={{display:"flex",alignItems:"center",gap:3}}>
                               <X size={10} strokeWidth={2.5}/>Booked
                             </span>
@@ -3618,6 +3721,7 @@ export default function Outfield() {
                     );
                   })}
                 </div>
+                )}
                 {slot!==null && (
                   <div className="lfp-toggle">
                     <div className="lfp-toggle-left">
@@ -3748,6 +3852,13 @@ export default function Outfield() {
               Slot confirmed. Just show up and play.
               {lfp && <><br/><span style={{color:"var(--orange)",fontWeight:700}}>Matchmaking alert is live!</span></>}
             </div>
+            {/* Feature 2: email confirmation note */}
+            {session?.user?.email && (
+              <div style={{display:"flex",alignItems:"center",gap:7,background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:12,padding:"9px 14px",marginTop:10,fontSize:11,color:"var(--green-d)",fontWeight:600,width:"100%",textAlign:"left"}}>
+                <CheckCircle size={13} color="var(--green-d)" strokeWidth={2.5}/>
+                A confirmation has been sent to {session.user.email}
+              </div>
+            )}
             <div className="ref-box">
               <div className="ref-label">Booking Reference</div>
               <div className="ref-code">{bookRef}</div>
@@ -3757,7 +3868,7 @@ export default function Outfield() {
                 {[
                   [MapPin, ground.name],
                   [Clock, curSlot.time],
-                  [Calendar, `${date}, 2025`],
+                  [Calendar, `${date}, 2026`],
                   [Navigation, ground.area],
                 ].map(([I,v],i)=>(
                   <div key={i} className="sdb-row"><I size={13} color="var(--ink4)" strokeWidth={2}/>{v}</div>
@@ -3768,8 +3879,20 @@ export default function Outfield() {
               onClick={()=>{setScreen("home");setNav("home");setGround(null);setSlot(null);setLfp(false);}}>
               Back to Home
             </button>
-            <button className="share-booking-btn" onClick={handleShareBooking}>
-              <Share2 size={15} strokeWidth={2}/> Share with teammates
+            {/* Feature 4: WhatsApp share */}
+            <button className="share-booking-btn" style={{background:"#25D366",borderColor:"#25D366",color:"#fff",marginTop:10}}
+              onClick={()=>{
+                const msg = encodeURIComponent(`I just booked ${ground?.name} on Outfield! ${date} at ${curSlot?.time}. Download the app: https://outfield-weld.vercel.app`);
+                window.open(`https://wa.me/?text=${msg}`,'_blank');
+              }}>
+              <span style={{fontSize:16}}>💬</span> Share on WhatsApp
+            </button>
+            <button className="share-booking-btn" onClick={()=>{
+              const text = `Booked ${ground?.name} on ${date} at ${curSlot?.time}. Booking ref: ${bookRef} — Outfield`;
+              navigator.clipboard?.writeText(text);
+              showToast("Copied to clipboard");
+            }}>
+              <Share2 size={15} strokeWidth={2}/> Copy booking details
             </button>
             {!ratingDone && (
               <div style={{marginTop:10,background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}
@@ -4127,16 +4250,64 @@ export default function Outfield() {
                 {/* ── STEP 1: FACILITY INFO ── */}
                 {ownerFormStep === "facility" && (<>
 
-                  {/* Photos */}
+                  {/* Photos — Supabase Storage upload */}
+                  {/* SQL: INSERT INTO storage.buckets (id, name, public) VALUES ('ground-images', 'ground-images', true); */}
                   <div className="form-block">
                     <div className="form-block-t">Facility Photos</div>
-                    <div className={`photo-drop ${ownerImg?"has-img":""}`}>
-                      <input ref={fileRef} type="file" accept="image/*" className="file-hidden"
-                        onChange={e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>setOwnerImg(ev.target.result);r.readAsDataURL(f);}}/>
-                      {ownerImg ? (
+                    <input ref={fileRef} type="file" accept="image/*" multiple style={{display:"none"}}
+                      onChange={async e => {
+                        const files = Array.from(e.target.files || []);
+                        if (!files.length) return;
+                        setPhotoUploading(true);
+                        const urls = [];
+                        for (const file of files.slice(0, 8)) {
+                          const path = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+                          const { data, error } = await supabase.storage.from('ground-images').upload(path, file, { upsert: true });
+                          if (!error && data) {
+                            const { data: pub } = supabase.storage.from('ground-images').getPublicUrl(data.path);
+                            if (pub?.publicUrl) urls.push(pub.publicUrl);
+                          }
+                        }
+                        if (urls.length) {
+                          setUploadedImgUrls(prev => [...prev, ...urls]);
+                          setOwnerImg(urls[0]);
+                        }
+                        setPhotoUploading(false);
+                      }}
+                    />
+                    <div className={`photo-drop ${uploadedImgUrls.length > 0 || ownerImg ? "has-img" : ""}`}
+                      onClick={() => !photoUploading && fileRef.current?.click()}>
+                      {photoUploading ? (
+                        <div style={{padding:"28px 18px",textAlign:"center"}}>
+                          <RefreshCw size={22} color="var(--ink4)" strokeWidth={1.5} style={{animation:"spin 1s linear infinite"}}/>
+                          <div style={{fontSize:12,color:"var(--ink4)",marginTop:8}}>Uploading…</div>
+                        </div>
+                      ) : uploadedImgUrls.length > 0 ? (
+                        <div style={{padding:10}}>
+                          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                            {uploadedImgUrls.map((url, idx) => (
+                              <div key={idx} style={{position:"relative"}}>
+                                <img src={url} alt="" style={{width:80,height:70,objectFit:"cover",borderRadius:10,display:"block"}}
+                                  onError={e=>{e.target.style.display="none";}}/>
+                                {idx === 0 && <div style={{position:"absolute",top:3,left:3,background:"var(--green-v)",color:"#fff",fontSize:8,fontWeight:800,borderRadius:5,padding:"2px 5px"}}>Cover</div>}
+                                <div style={{position:"absolute",top:3,right:3,width:18,height:18,borderRadius:50,background:"rgba(0,0,0,.5)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}
+                                  onClick={e=>{e.stopPropagation();setUploadedImgUrls(p=>p.filter((_,j)=>j!==idx));if(idx===0)setOwnerImg(uploadedImgUrls[1]||null);}}>
+                                  <X size={10} color="#fff" strokeWidth={2.5}/>
+                                </div>
+                              </div>
+                            ))}
+                            {uploadedImgUrls.length < 8 && (
+                              <div style={{width:80,height:70,borderRadius:10,border:"2px dashed var(--border)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
+                                <Plus size={20} color="var(--ink4)" strokeWidth={1.5}/>
+                              </div>
+                            )}
+                          </div>
+                          <div style={{fontSize:10,color:"var(--ink4)",marginTop:8}}>{uploadedImgUrls.length} photo{uploadedImgUrls.length!==1?"s":""} uploaded · tap to add more</div>
+                        </div>
+                      ) : ownerImg ? (
                         <>
                           <img className="photo-preview-img" src={ownerImg} alt=""/>
-                          <div className="photo-change-btn" onClick={()=>fileRef.current?.click()}>
+                          <div className="photo-change-btn">
                             <Camera size={12} strokeWidth={2}/> Change Photo
                           </div>
                         </>
@@ -4144,7 +4315,7 @@ export default function Outfield() {
                         <>
                           <div className="upload-ico-wrap"><Upload size={22} color="var(--ink4)" strokeWidth={1.5}/></div>
                           <div className="upload-t">Upload Facility Photos</div>
-                          <div className="upload-s">Up to 8 photos of your complex or facility<br/>High quality photos get 3× more bookings</div>
+                          <div className="upload-s">Up to 8 photos · tap to browse<br/>High quality photos get 3× more bookings</div>
                         </>
                       )}
                     </div>
