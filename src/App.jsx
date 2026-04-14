@@ -2066,7 +2066,7 @@ export default function Outfield() {
     const animate = () => {
       if (!heroIsDragging.current && !heroIsDecelerating.current) {
         heroOffsetRef.current -= AUTO_SPEED;
-        if (Math.abs(heroOffsetRef.current) >= getHalfWidth()) heroOffsetRef.current = 0;
+        if (heroOffsetRef.current < -getHalfWidth()) heroOffsetRef.current += getHalfWidth();
         el.style.transform = `translateX(${heroOffsetRef.current}px)`;
       }
       heroAnimFrameRef.current = requestAnimationFrame(animate);
