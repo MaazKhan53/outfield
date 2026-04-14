@@ -8,18 +8,22 @@ ADMIN: TO APPROVE A GROUND LISTING:
 To REJECT: change status to 'rejected' or simply delete the row
 
 SQL TO RUN ONCE IN SUPABASE SQL EDITOR:
-CREATE TABLE IF NOT EXISTS chat_rooms (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), matchmaking_id uuid, ground_name text, sport text, date text, time text, created_by uuid REFERENCES auth.users(id), created_at timestamptz DEFAULT now());
-CREATE TABLE IF NOT EXISTS chat_messages (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), room_id uuid REFERENCES chat_rooms(id) ON DELETE CASCADE, sender_id uuid REFERENCES auth.users(id), sender_name text, message text NOT NULL, created_at timestamptz DEFAULT now());
-CREATE TABLE IF NOT EXISTS chat_members (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), room_id uuid REFERENCES chat_rooms(id) ON DELETE CASCADE, user_id uuid REFERENCES auth.users(id), user_name text, joined_at timestamptz DEFAULT now(), UNIQUE(room_id, user_id));
-ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
+-- CHAT SYSTEM v2: 1-on-1 matchmaking conversations
+-- Run in Supabase SQL Editor:
+DROP TABLE IF EXISTS chat_messages CASCADE;
+DROP TABLE IF EXISTS chat_members CASCADE;
+DROP TABLE IF EXISTS chat_rooms CASCADE;
+CREATE TABLE IF NOT EXISTS chat_rooms (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), host_id uuid REFERENCES auth.users(id) ON DELETE CASCADE, host_name text, requester_id uuid REFERENCES auth.users(id) ON DELETE CASCADE, requester_name text, matchmaking_type text DEFAULT 'players', ground_name text, sport text, date text, time text, request_label text, created_at timestamptz DEFAULT now());
+CREATE TABLE IF NOT EXISTS chat_messages (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), room_id uuid REFERENCES chat_rooms(id) ON DELETE CASCADE, sender_id uuid REFERENCES auth.users(id) ON DELETE CASCADE, sender_name text, message text NOT NULL, created_at timestamptz DEFAULT now());
 ALTER TABLE chat_rooms ENABLE ROW LEVEL SECURITY;
-ALTER TABLE chat_members ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Members read messages" ON chat_messages FOR SELECT USING (EXISTS (SELECT 1 FROM chat_members WHERE room_id = chat_messages.room_id AND user_id = auth.uid()));
-CREATE POLICY "Members send messages" ON chat_messages FOR INSERT WITH CHECK (auth.uid() = sender_id AND EXISTS (SELECT 1 FROM chat_members WHERE room_id = chat_messages.room_id AND user_id = auth.uid()));
-CREATE POLICY "Anyone read rooms" ON chat_rooms FOR SELECT USING (true);
-CREATE POLICY "Authenticated insert rooms" ON chat_rooms FOR INSERT WITH CHECK (auth.uid() = created_by);
-CREATE POLICY "Anyone read members" ON chat_members FOR SELECT USING (true);
-CREATE POLICY "Users join rooms" ON chat_members FOR INSERT WITH CHECK (auth.uid() = user_id);
+ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Participants read rooms" ON chat_rooms FOR SELECT USING (auth.uid() = host_id OR auth.uid() = requester_id);
+CREATE POLICY "Participants insert rooms" ON chat_rooms FOR INSERT WITH CHECK (auth.uid() = requester_id);
+CREATE POLICY "Participants read messages" ON chat_messages FOR SELECT USING (EXISTS (SELECT 1 FROM chat_rooms WHERE id = chat_messages.room_id AND (host_id = auth.uid() OR requester_id = auth.uid())));
+CREATE POLICY "Participants send messages" ON chat_messages FOR INSERT WITH CHECK (auth.uid() = sender_id AND EXISTS (SELECT 1 FROM chat_rooms WHERE id = chat_messages.room_id AND (host_id = auth.uid() OR requester_id = auth.uid())));
+CREATE INDEX IF NOT EXISTS chat_messages_created_at_idx ON chat_messages(created_at);
+-- Auto-delete messages older than 30 days (run once):
+-- SELECT cron.schedule('delete-old-chat-messages','0 3 * * *',$$DELETE FROM chat_messages WHERE created_at < now() - interval '30 days'$$);
 ALTER TABLE courts ADD COLUMN IF NOT EXISTS pricing_type text DEFAULT 'fixed';
 CREATE TABLE IF NOT EXISTS announcements (id uuid default gen_random_uuid() primary key, ground_id uuid, owner_id uuid, message text, created_at timestamptz default now());
 CREATE TABLE IF NOT EXISTS blocked_slots (id uuid default gen_random_uuid() primary key, court_id uuid, ground_id uuid, date text, start_time text, end_time text, reason text, owner_id uuid, created_at timestamptz default now());
@@ -903,13 +907,14 @@ input,select,textarea{font-size:16px !important;}
 .mc-join:hover{background:#EA6C0A;}
 .mc-join.done{background:transparent;color:var(--orange);border:1.5px solid var(--orange);}
 .mc-chat-btn{background:transparent;border:1.5px solid var(--green);color:var(--green-d);border-radius:100px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;display:flex;align-items:center;gap:4px;}
-.chat-overlay{position:fixed;inset:0;z-index:500;background:var(--bg);display:flex;flex-direction:column;max-width:430px;left:50%;transform:translateX(-50%);}
+.chat-overlay{position:fixed;top:0;left:0;right:0;bottom:0;width:100%;height:100%;height:100dvh;z-index:9999;background:var(--bg);display:flex;flex-direction:column;overflow:hidden;}
 .app.dark .chat-overlay{background:#0A0E1A;}
 .chat-header{background:var(--ink);padding:52px 16px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;}
 .chat-header-info{flex:1;min-width:0;}
 .chat-header-title{font-family:'Sora',sans-serif;font-size:15px;font-weight:800;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.chat-header-sub{font-size:11px;color:rgba(255,255,255,.45);margin-top:2px;}
-.chat-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px;}
+.chat-header-sub{font-size:11px;color:rgba(255,255,255,.45);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.chat-header-badge{font-size:10px;font-weight:700;padding:3px 8px;border-radius:100px;background:rgba(34,197,94,.2);color:#22C55E;white-space:nowrap;flex-shrink:0;}
+.chat-messages{flex:1;overflow-y:auto;min-height:0;padding:16px;display:flex;flex-direction:column;gap:10px;}
 .chat-bubble-wrap{display:flex;flex-direction:column;max-width:75%;}
 .chat-bubble-wrap.mine{align-self:flex-end;align-items:flex-end;}
 .chat-bubble-wrap.theirs{align-self:flex-start;align-items:flex-start;}
@@ -919,18 +924,29 @@ input,select,textarea{font-size:16px !important;}
 .chat-bubble.theirs{background:#fff;color:var(--ink);border-bottom-left-radius:4px;border:1px solid var(--border);}
 .app.dark .chat-bubble.theirs{background:#111827 !important;color:#F1F5F9 !important;border-color:#1E293B !important;}
 .chat-time{font-size:9px;color:var(--ink4);margin-top:3px;padding:0 4px;}
-.chat-input-row{padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-shrink:0;}
+.chat-input-row{position:relative;padding:10px 16px;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));background:#fff;border-top:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-shrink:0;min-height:60px;}
 .app.dark .chat-input-row{background:#111827 !important;border-color:#1E293B !important;}
 .chat-input{flex:1;padding:10px 14px;border:1.5px solid var(--border);border-radius:100px;font-family:'Inter',sans-serif;font-size:14px;background:var(--bg);color:var(--ink);outline:none;}
 .chat-input:focus{border-color:var(--green);}
 .app.dark .chat-input{background:#1E293B !important;color:#F1F5F9 !important;border-color:#334155 !important;}
 .chat-send-btn{width:40px;height:40px;border-radius:50%;background:#22C55E;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-.chat-room-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:10px;}
+.chat-overlay.dark{background:#0A0E1A;}
+.chat-overlay.dark .chat-input-row{background:#111827;border-color:#1E293B;}
+.chat-overlay.dark .chat-input{background:#1E293B;color:#F1F5F9;border-color:#334155;}
+.chat-overlay.dark .chat-bubble.theirs{background:#111827;color:#F1F5F9;border-color:#1E293B;}
+.chat-overlay.dark .chat-messages{background:#0A0E1A;}
+.chat-overlay.dark .chat-room-card{background:#111827;border-color:#1E293B;}
+.chat-overlay.dark .chat-group-header{color:#64748B;background:#0A0E1A;}
+.chat-group-header{font-size:10px;font-weight:800;color:var(--ink4);text-transform:uppercase;letter-spacing:1px;padding:16px 16px 8px;background:var(--bg);}
+.app.dark .chat-group-header{color:#64748B;}
+.chat-room-card{display:flex;align-items:center;gap:12px;padding:14px 16px;background:#fff;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s;}
+.chat-room-card:active{background:var(--bg);}
 .app.dark .chat-room-card{background:#111827 !important;border-color:#1E293B !important;}
-.chat-room-info{flex:1;min-width:0;}
-.chat-room-name{font-size:13px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.chat-room-meta{font-size:11px;color:var(--ink4);margin-top:2px;}
-.chat-open-btn{background:var(--green);color:#fff;border:none;border-radius:100px;padding:7px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;}
+.chat-room-avatar{width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#22C55E,#16A34A);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;color:#fff;flex-shrink:0;}
+.chat-room-name{font-size:14px;font-weight:700;color:var(--ink);}
+.app.dark .chat-room-name{color:#F1F5F9;}
+.chat-room-preview{font-size:12px;color:var(--ink4);margin-top:2px;}
+.chat-room-badge{font-size:10px;font-weight:700;padding:3px 8px;border-radius:100px;background:var(--green-l);color:var(--green-d);white-space:nowrap;}
 
 /* ── EXPLORE ── */
 .explore{background:var(--bg);overflow-y:auto;padding-bottom:72px;min-height:100svh;}
@@ -2130,10 +2146,11 @@ export default function Outfield() {
 
   const fetchChatRooms = async () => {
     if (!session?.user) return;
-    const { data: memberRows } = await supabase.from('chat_members').select('room_id').eq('user_id', session.user.id);
-    if (!memberRows?.length) { setChatRooms([]); return; }
-    const roomIds = memberRows.map(r => r.room_id);
-    const { data: rooms } = await supabase.from('chat_rooms').select('*').in('id', roomIds).order('created_at', { ascending: false });
+    const { data: rooms } = await supabase
+      .from('chat_rooms')
+      .select('*')
+      .or(`host_id.eq.${session.user.id},requester_id.eq.${session.user.id}`)
+      .order('created_at', { ascending: false });
     setChatRooms(rooms || []);
   };
 
@@ -2141,10 +2158,11 @@ export default function Outfield() {
     setActiveRoom(room);
     setChatScreen(true);
     setChatLoading(true);
-    const { data } = await supabase.from('chat_messages').select('*').eq('room_id', room.id).order('created_at', { ascending: true });
+    const { data } = await supabase
+      .from('chat_messages').select('*').eq('room_id', room.id).order('created_at', { ascending: true });
     setChatMessages(data || []);
     setChatLoading(false);
-    setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+    setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'instant' }), 100);
     if (chatChannelRef.current) supabase.removeChannel(chatChannelRef.current);
     chatChannelRef.current = supabase
       .channel(`room-${room.id}`)
@@ -2168,33 +2186,31 @@ export default function Outfield() {
     });
   };
 
-  const createChatRoom = async (matchInfo) => {
+  const startOrOpenChat = async (matchInfo) => {
     if (!session?.user) return;
+    const existingRoom = chatRooms.find(r =>
+      ((r.host_id === matchInfo.hostId && r.requester_id === session.user.id) ||
+       (r.requester_id === matchInfo.hostId && r.host_id === session.user.id)) &&
+      r.ground_name === matchInfo.groundName && r.date === matchInfo.date && r.time === matchInfo.time
+    );
+    if (existingRoom) { openChatRoom(existingRoom); return; }
+    const label = `${matchInfo.type === 'teams' ? 'Team vs Team' : 'Find Players'} · ${matchInfo.groundName} · ${matchInfo.date} ${matchInfo.time}`;
     const { data: room } = await supabase.from('chat_rooms').insert({
+      host_id: matchInfo.hostId,
+      host_name: matchInfo.hostName,
+      requester_id: session.user.id,
+      requester_name: authUser?.name || 'Player',
+      matchmaking_type: matchInfo.type || 'players',
       ground_name: matchInfo.groundName,
       sport: matchInfo.sport,
       date: matchInfo.date,
       time: matchInfo.time,
-      created_by: session.user.id
+      request_label: label
     }).select().single();
     if (room) {
-      await supabase.from('chat_members').insert({
-        room_id: room.id,
-        user_id: session.user.id,
-        user_name: authUser?.name || 'Player'
-      });
+      setChatRooms(prev => [room, ...prev]);
       openChatRoom(room);
     }
-  };
-
-  const joinChatRoom = async (room) => {
-    if (!session?.user) return;
-    await supabase.from('chat_members').upsert({
-      room_id: room.id,
-      user_id: session.user.id,
-      user_name: authUser?.name || 'Player'
-    }, { onConflict: 'room_id,user_id' });
-    openChatRoom(room);
   };
 
   const heroPointerDown = (clientX) => {
@@ -3454,7 +3470,7 @@ export default function Outfield() {
                         <div className="mc-spots">
                           {spotsLeft>0?`${spotsLeft} spot${spotsLeft!==1?"s":""} needed`:"Full"}
                         </div>
-                        <button className="mc-chat-btn" onClick={()=>createChatRoom({groundName:s.groundName,sport:s.sport,date:s.dateLabel,time:s.time})}>💬 Chat</button>
+                        <button className="mc-chat-btn" onClick={()=>startOrOpenChat({hostId:s.hostId||session?.user?.id,hostName:s.bookedBy||'Host',groundName:s.groundName,sport:s.sport,date:s.dateLabel,time:s.time,type:'players'})}>💬 Chat</button>
                         <button className={`mc-join ${jnd?"done":""}`}
                           onClick={()=>{const nv=!jnd;setJoined(p=>({...p,[jk]:nv}));showToast(nv?"Request sent!":"Request cancelled");}}
                           disabled={spotsLeft<=0&&!jnd}>
@@ -3467,22 +3483,40 @@ export default function Outfield() {
               </div>
             )}
             {matchTab === "chats" && (
-              <div style={{padding:"0 18px"}}>
+              <div style={{paddingBottom:16}}>
                 {chatRooms.length === 0 ? (
-                  <div className="empty">
+                  <div className="empty" style={{margin:"0 18px"}}>
                     <div className="empty-ico-wrap" style={{fontSize:28}}>💬</div>
                     <div className="empty-t">No chats yet</div>
-                    <div className="empty-s">Join a matchmaking group to start chatting</div>
+                    <div className="empty-s">Tap 💬 Chat on any matchmaking card to start a conversation</div>
                   </div>
-                ) : chatRooms.map(room => (
-                  <div key={room.id} className="chat-room-card">
-                    <div className="chat-room-info">
-                      <div className="chat-room-name">{room.ground_name}</div>
-                      <div className="chat-room-meta">{room.sport} · {room.date} {room.time}</div>
+                ) : (() => {
+                  const grouped = chatRooms.reduce((acc, room) => {
+                    const key = room.request_label || 'Other';
+                    if (!acc[key]) acc[key] = [];
+                    acc[key].push(room);
+                    return acc;
+                  }, {});
+                  return Object.entries(grouped).map(([label, rooms]) => (
+                    <div key={label}>
+                      <div className="chat-group-header">{label}</div>
+                      {rooms.map(room => {
+                        const isHost = room.host_id === session?.user?.id;
+                        const otherName = isHost ? room.requester_name : room.host_name;
+                        return (
+                          <div key={room.id} className="chat-room-card" onClick={()=>openChatRoom(room)}>
+                            <div className="chat-room-avatar">{(otherName||'?')[0].toUpperCase()}</div>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div className="chat-room-name">{otherName || 'Unknown'}</div>
+                              <div className="chat-room-preview">{isHost ? 'You posted this request' : 'You want to join'}</div>
+                            </div>
+                            <div className="chat-room-badge">{isHost ? 'Host' : 'Joining'}</div>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <button className="chat-open-btn" onClick={()=>openChatRoom(room)}>Open Chat</button>
-                  </div>
-                ))}
+                  ));
+                })()}
               </div>
             )}
             {/* ── LEADERBOARD ── */}
@@ -3575,7 +3609,7 @@ export default function Outfield() {
                             </div>
                             <div style={{height:10}}/>
                             <div style={{display:"flex",gap:8,marginBottom:6}}>
-                              <button className="mc-chat-btn" style={{flex:1,justifyContent:"center"}} onClick={()=>createChatRoom({groundName:tc.groundName,sport:tc.sport,date:tc.date,time:tc.time})}>💬 Chat</button>
+                              <button className="mc-chat-btn" style={{flex:1,justifyContent:"center"}} onClick={()=>startOrOpenChat({hostId:tc.hostId||session?.user?.id,hostName:tc.captain||'Captain',groundName:tc.groundName,sport:tc.sport,date:tc.date,time:tc.time,type:'teams'})}>💬 Chat</button>
                               <button className="tc-challenge-btn" style={{flex:2}}
                                 onClick={()=>{setTeamReqs(p=>({...p,[reqKey]:true}));showToast("Challenge sent! Waiting for captain to respond.");}}>
                                 <Swords size={13} strokeWidth={2}/> Challenge This Team
@@ -4263,7 +4297,7 @@ export default function Outfield() {
                         <div className="mc-spots">
                           {spotsLeft>0?`${spotsLeft} spot${spotsLeft!==1?"s":""} needed`:"Full"}
                         </div>
-                        <button className="mc-chat-btn" onClick={()=>createChatRoom({groundName:s.groundName,sport:s.sport,date:s.dateLabel,time:s.time})}>💬 Chat</button>
+                        <button className="mc-chat-btn" onClick={()=>startOrOpenChat({hostId:s.hostId||session?.user?.id,hostName:s.bookedBy||'Host',groundName:s.groundName,sport:s.sport,date:s.dateLabel,time:s.time,type:'players'})}>💬 Chat</button>
                         <button className={`mc-join ${jnd?"done":""}`}
                           onClick={()=>{const nv=!jnd;setJoined(p=>({...p,[jk]:nv}));showToast(nv?"Request sent!":"Request cancelled");}}
                           disabled={spotsLeft<=0&&!jnd}>
@@ -4342,7 +4376,7 @@ export default function Outfield() {
                             </div>
                             <div style={{height:10}}/>
                             <div style={{display:"flex",gap:8,marginBottom:6}}>
-                              <button className="mc-chat-btn" style={{flex:1,justifyContent:"center"}} onClick={()=>createChatRoom({groundName:tc.groundName,sport:tc.sport,date:tc.date,time:tc.time})}>💬 Chat</button>
+                              <button className="mc-chat-btn" style={{flex:1,justifyContent:"center"}} onClick={()=>startOrOpenChat({hostId:tc.hostId||session?.user?.id,hostName:tc.captain||'Captain',groundName:tc.groundName,sport:tc.sport,date:tc.date,time:tc.time,type:'teams'})}>💬 Chat</button>
                               <button className="tc-challenge-btn" style={{flex:2}}
                                 onClick={()=>{setTeamReqs(p=>({...p,[reqKey]:true}));showToast("Challenge sent! Waiting for captain to respond.");}}>
                                 <Swords size={13} strokeWidth={2}/> Challenge This Team
@@ -4360,22 +4394,40 @@ export default function Outfield() {
               </div>
             )}
             {matchTab === "chats" && (
-              <div style={{padding:"0 18px"}}>
+              <div style={{paddingBottom:16}}>
                 {chatRooms.length === 0 ? (
-                  <div className="empty">
+                  <div className="empty" style={{margin:"0 18px"}}>
                     <div className="empty-ico-wrap" style={{fontSize:28}}>💬</div>
                     <div className="empty-t">No chats yet</div>
-                    <div className="empty-s">Join a matchmaking group to start chatting</div>
+                    <div className="empty-s">Tap 💬 Chat on any matchmaking card to start a conversation</div>
                   </div>
-                ) : chatRooms.map(room => (
-                  <div key={room.id} className="chat-room-card">
-                    <div className="chat-room-info">
-                      <div className="chat-room-name">{room.ground_name}</div>
-                      <div className="chat-room-meta">{room.sport} · {room.date} {room.time}</div>
+                ) : (() => {
+                  const grouped = chatRooms.reduce((acc, room) => {
+                    const key = room.request_label || 'Other';
+                    if (!acc[key]) acc[key] = [];
+                    acc[key].push(room);
+                    return acc;
+                  }, {});
+                  return Object.entries(grouped).map(([label, rooms]) => (
+                    <div key={label}>
+                      <div className="chat-group-header">{label}</div>
+                      {rooms.map(room => {
+                        const isHost = room.host_id === session?.user?.id;
+                        const otherName = isHost ? room.requester_name : room.host_name;
+                        return (
+                          <div key={room.id} className="chat-room-card" onClick={()=>openChatRoom(room)}>
+                            <div className="chat-room-avatar">{(otherName||'?')[0].toUpperCase()}</div>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div className="chat-room-name">{otherName || 'Unknown'}</div>
+                              <div className="chat-room-preview">{isHost ? 'You posted this request' : 'You want to join'}</div>
+                            </div>
+                            <div className="chat-room-badge">{isHost ? 'Host' : 'Joining'}</div>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <button className="chat-open-btn" onClick={()=>openChatRoom(room)}>Open Chat</button>
-                  </div>
-                ))}
+                  ));
+                })()}
               </div>
             )}
           </div>
@@ -5789,18 +5841,22 @@ export default function Outfield() {
         )}
       </div>
 
-      {/* ═══ CHAT OVERLAY ═══ */}
+      {/* ═══ CHAT OVERLAY — outside app div to avoid overflow:hidden clipping ═══ */}
       {chatScreen && activeRoom && (
-        <div className="chat-overlay">
+        <div className={`chat-overlay${darkMode?' dark':''}`}>
           <div className="chat-header">
             <button className="dhero-btn" onClick={()=>{ setChatScreen(false); if(chatChannelRef.current) supabase.removeChannel(chatChannelRef.current); }}>
               <ArrowLeft size={18} strokeWidth={2}/>
             </button>
             <div className="chat-header-info">
-              <div className="chat-header-title">{activeRoom.ground_name}</div>
-              <div className="chat-header-sub">{activeRoom.sport} · {activeRoom.date} {activeRoom.time}</div>
+              <div className="chat-header-title">
+                {activeRoom.host_id === session?.user?.id ? activeRoom.requester_name : activeRoom.host_name}
+              </div>
+              <div className="chat-header-sub">{activeRoom.ground_name} · {activeRoom.sport} · {activeRoom.date} {activeRoom.time}</div>
             </div>
-            <div style={{width:8,height:8,borderRadius:'50%',background:'#22C55E',flexShrink:0}}/>
+            <div className="chat-header-badge">
+              {activeRoom.host_id === session?.user?.id ? 'Host' : 'Joining'}
+            </div>
           </div>
           <div className="chat-messages">
             {chatLoading && <div style={{textAlign:'center',color:'var(--ink4)',fontSize:12,padding:20}}>Loading messages...</div>}
