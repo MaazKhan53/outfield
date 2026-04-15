@@ -7,9 +7,112 @@ ADMIN: TO APPROVE A GROUND LISTING:
 5. Click Save — the ground immediately appears on the app for all players
 To REJECT: change status to 'rejected' or simply delete the row
 
-SQL TO RUN ONCE IN SUPABASE SQL EDITOR:
--- CHAT SYSTEM v2: 1-on-1 matchmaking conversations
--- Run in Supabase SQL Editor:
+════════════════════════════════════════════════════════
+SQL TO RUN ONCE IN SUPABASE SQL EDITOR (full DB setup):
+════════════════════════════════════════════════════════
+
+-- ── 1. USERS (public profile, linked to auth.users) ──────────────────────
+CREATE TABLE IF NOT EXISTS users (
+  id         uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  name       text,
+  phone      text UNIQUE,
+  role       text DEFAULT 'player',
+  city       text,
+  dob        text,
+  age        int,
+  created_at timestamptz DEFAULT now()
+);
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "users_select" ON users;
+DROP POLICY IF EXISTS "users_insert" ON users;
+DROP POLICY IF EXISTS "users_update" ON users;
+CREATE POLICY "users_select" ON users FOR SELECT USING (true);
+CREATE POLICY "users_insert" ON users FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "users_update" ON users FOR UPDATE USING (auth.uid() = id);
+
+-- ── 2. GROUNDS ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS grounds (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_id      uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  name          text NOT NULL,
+  area          text,
+  city          text,
+  description   text,
+  amenities     text,
+  open_from     text DEFAULT '06:00',
+  open_till     text DEFAULT '23:00',
+  contact_phone text,
+  rating        numeric(3,1) DEFAULT 0,
+  img_url       text,
+  latitude      numeric,
+  longitude     numeric,
+  status        text DEFAULT 'pending',
+  created_at    timestamptz DEFAULT now()
+);
+ALTER TABLE grounds ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "grounds_select" ON grounds;
+DROP POLICY IF EXISTS "grounds_insert" ON grounds;
+DROP POLICY IF EXISTS "grounds_update" ON grounds;
+CREATE POLICY "grounds_select" ON grounds FOR SELECT USING (status = 'live' OR auth.uid() = owner_id);
+CREATE POLICY "grounds_insert" ON grounds FOR INSERT WITH CHECK (auth.uid() = owner_id);
+CREATE POLICY "grounds_update" ON grounds FOR UPDATE USING (auth.uid() = owner_id);
+
+-- ── 3. COURTS ─────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS courts (
+  id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  ground_id          uuid REFERENCES grounds(id) ON DELETE CASCADE,
+  name               text NOT NULL,
+  sports             text,
+  surface_type       text,
+  capacity           int DEFAULT 22,
+  price_base         numeric DEFAULT 2000,
+  price_peak         numeric DEFAULT 2500,
+  slot_duration_mins int DEFAULT 120,
+  notes              text,
+  pricing_type       text DEFAULT 'fixed',
+  created_at         timestamptz DEFAULT now()
+);
+ALTER TABLE courts ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "courts_select" ON courts;
+DROP POLICY IF EXISTS "courts_owner"  ON courts;
+CREATE POLICY "courts_select" ON courts FOR SELECT USING (true);
+CREATE POLICY "courts_owner"  ON courts FOR ALL USING (
+  EXISTS (SELECT 1 FROM grounds g WHERE g.id = courts.ground_id AND g.owner_id = auth.uid())
+);
+
+-- ── 4. BOOKINGS ───────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS bookings (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  court_id       uuid REFERENCES courts(id) ON DELETE SET NULL,
+  player_id      uuid REFERENCES users(id) ON DELETE CASCADE,
+  booking_date   text NOT NULL,
+  start_time     text NOT NULL,
+  end_time       text NOT NULL,
+  total_price    numeric DEFAULT 0,
+  player_count   int DEFAULT 1,
+  payment_method text DEFAULT 'cash',
+  status         text DEFAULT 'confirmed',
+  booking_ref    text,
+  lfp_on         boolean DEFAULT false,
+  created_at     timestamptz DEFAULT now()
+);
+ALTER TABLE bookings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "bookings_player_insert" ON bookings;
+DROP POLICY IF EXISTS "bookings_player_select" ON bookings;
+DROP POLICY IF EXISTS "bookings_player_update" ON bookings;
+DROP POLICY IF EXISTS "bookings_owner_select"  ON bookings;
+CREATE POLICY "bookings_player_insert" ON bookings FOR INSERT WITH CHECK (auth.uid() = player_id);
+CREATE POLICY "bookings_player_select" ON bookings FOR SELECT USING (auth.uid() = player_id);
+CREATE POLICY "bookings_player_update" ON bookings FOR UPDATE USING (auth.uid() = player_id);
+CREATE POLICY "bookings_owner_select"  ON bookings FOR SELECT USING (
+  EXISTS (
+    SELECT 1 FROM courts c
+    JOIN grounds g ON g.id = c.ground_id
+    WHERE c.id = bookings.court_id AND g.owner_id = auth.uid()
+  )
+);
+
+-- ── 5. CHAT SYSTEM ────────────────────────────────────────────────────────
 DROP TABLE IF EXISTS chat_messages CASCADE;
 DROP TABLE IF EXISTS chat_members CASCADE;
 DROP TABLE IF EXISTS chat_rooms CASCADE;
@@ -22,8 +125,8 @@ CREATE POLICY "Participants insert rooms" ON chat_rooms FOR INSERT WITH CHECK (a
 CREATE POLICY "Participants read messages" ON chat_messages FOR SELECT USING (EXISTS (SELECT 1 FROM chat_rooms WHERE id = chat_messages.room_id AND (host_id = auth.uid() OR requester_id = auth.uid())));
 CREATE POLICY "Participants send messages" ON chat_messages FOR INSERT WITH CHECK (auth.uid() = sender_id AND EXISTS (SELECT 1 FROM chat_rooms WHERE id = chat_messages.room_id AND (host_id = auth.uid() OR requester_id = auth.uid())));
 CREATE INDEX IF NOT EXISTS chat_messages_created_at_idx ON chat_messages(created_at);
--- Auto-delete messages older than 30 days (run once):
--- SELECT cron.schedule('delete-old-chat-messages','0 3 * * *',$$DELETE FROM chat_messages WHERE created_at < now() - interval '30 days'$$);
+
+-- ── 6. MISC TABLES ────────────────────────────────────────────────────────
 ALTER TABLE courts ADD COLUMN IF NOT EXISTS pricing_type text DEFAULT 'fixed';
 CREATE TABLE IF NOT EXISTS announcements (id uuid default gen_random_uuid() primary key, ground_id uuid, owner_id uuid, message text, created_at timestamptz default now());
 CREATE TABLE IF NOT EXISTS blocked_slots (id uuid default gen_random_uuid() primary key, court_id uuid, ground_id uuid, date text, start_time text, end_time text, reason text, owner_id uuid, created_at timestamptz default now());
@@ -32,9 +135,8 @@ CREATE TABLE IF NOT EXISTS feedback (id uuid PRIMARY KEY DEFAULT gen_random_uuid
 */
 import { useState, useEffect, useRef } from "react";
 import { supabase } from './supabase';
-import L from 'leaflet';
-import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
+import MapGL, { Marker as MapMarker, GeolocateControl, NavigationControl } from 'react-map-gl/mapbox';
+import 'mapbox-gl/dist/mapbox-gl.css';
 import {
   MapPin, Search, Bell, Star, Clock, ChevronRight, Heart,
   Users, Zap, Shield, ArrowLeft, Filter, Phone, Share2,
@@ -46,13 +148,11 @@ import {
   Activity, Target, Award, Radio, RefreshCw, Map
 } from "lucide-react";
 
-/* ─── LEAFLET DEFAULT ICON FIX ─── */
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
+/* ─── MAPBOX CONFIG ─── */
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
+const MB_STREETS   = 'mapbox://styles/mapbox/streets-v12';
+const MB_DARK      = 'mapbox://styles/mapbox/dark-v11';
+const MB_SATELLITE = 'mapbox://styles/mapbox/satellite-streets-v12';
 
 /* ─── DATA ─── */
 const SPORTS = [
@@ -689,7 +789,7 @@ input,select,textarea{font-size:16px !important;}
 .ob-sport-tag{display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:100px;font-size:10px;font-weight:700;white-space:nowrap;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:rgba(255,255,255,.5);flex-shrink:0;}
 
 /* ── HOME ── */
-.home{background:var(--bg);overflow-y:auto;padding-bottom:84px;min-height:100svh;}
+.home{background:var(--bg);padding-bottom:84px;}
 .home-head{background:var(--ink);padding:52px 18px 0;position:relative;overflow:hidden;}
 .home-head-blob{position:absolute;top:-80px;right:-60px;width:260px;height:260px;background:radial-gradient(circle,rgba(34,197,94,.1) 0%,transparent 65%);pointer-events:none;}
 .home-head-blob2{position:absolute;bottom:-40px;left:-40px;width:180px;height:180px;background:radial-gradient(circle,rgba(59,130,246,.07) 0%,transparent 65%);pointer-events:none;}
@@ -885,7 +985,7 @@ input,select,textarea{font-size:16px !important;}
 .sdb-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink2);padding:4px 0;font-weight:500;}
 
 /* ── MATCHMAKING ── */
-.match{background:var(--bg);overflow-y:auto;padding-bottom:72px;min-height:100svh;}
+.match{background:var(--bg);padding-bottom:72px;}
 .match-head{background:var(--ink);padding:52px 18px 26px;position:relative;overflow:hidden;}
 .match-head::after{content:'';position:absolute;bottom:-18px;left:0;right:0;height:36px;background:var(--bg);border-radius:22px 22px 0 0;}
 .match-glow{position:absolute;top:-30px;right:-20px;width:160px;height:160px;background:radial-gradient(circle,rgba(249,115,22,.15),transparent 70%);}
@@ -949,14 +1049,14 @@ input,select,textarea{font-size:16px !important;}
 .chat-room-badge{font-size:10px;font-weight:700;padding:3px 8px;border-radius:100px;background:var(--green-l);color:var(--green-d);white-space:nowrap;}
 
 /* ── EXPLORE ── */
-.explore{background:var(--bg);overflow-y:auto;padding-bottom:72px;min-height:100svh;}
+.explore{background:var(--bg);padding-bottom:72px;}
 .exp-head{background:var(--ink);padding:52px 18px 26px;position:relative;overflow:hidden;}
 .exp-head::after{content:'';position:absolute;bottom:-18px;left:0;right:0;height:36px;background:var(--bg);border-radius:22px 22px 0 0;}
 .exp-title{font-family:'Sora',sans-serif;font-size:20px;font-weight:900;color:#fff;letter-spacing:-.3px;}
 .exp-sub{font-size:11px;color:rgba(255,255,255,.35);margin-top:3px;}
 
 /* ── PROFILE ── */
-.profile{background:var(--bg);overflow-y:auto;padding-bottom:72px;min-height:100svh;}
+.profile{background:var(--bg);padding-bottom:72px;}
 .prof-head{background:var(--ink);padding:52px 18px 44px;text-align:center;position:relative;overflow:hidden;}
 .prof-head::after{content:'';position:absolute;bottom:-18px;left:0;right:0;height:36px;background:var(--bg);border-radius:22px 22px 0 0;}
 .prof-glow{position:absolute;inset:0;background:radial-gradient(ellipse 60% 50% at 50% 40%,rgba(34,197,94,.1) 0%,transparent 70%);pointer-events:none;}
@@ -1397,13 +1497,11 @@ input,select,textarea{font-size:16px !important;}
 .dm-toggle.off::after{left:3px;}
 
 /* ── MAP SCREEN ── */
-.map-screen{display:block;flex:1;position:relative;}
-/* Prevent black void showing when Leaflet is panned to world edges */
-.leaflet-container{background:#b9d4a8 !important;}
-.app.dark .leaflet-container{background:#1a2035 !important;}
-.map-pin{width:22px;height:22px;background:#22C55E;border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 10px rgba(34,197,94,.5);}
-.map-user-dot{width:14px;height:14px;background:#3B82F6;border:3px solid #fff;border-radius:50%;animation:pulse-blue 2s infinite;}
-@keyframes pulse-blue{0%{box-shadow:0 0 0 0 rgba(59,130,246,.6);}100%{box-shadow:0 0 0 16px rgba(59,130,246,0);}}
+.map-pin{width:22px;height:22px;background:#22C55E;border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 10px rgba(34,197,94,.5);cursor:pointer;}
+.map-pin:hover{transform:rotate(-45deg) scale(1.2);}
+/* Override default Mapbox GL control styling to match app theme */
+.mapboxgl-ctrl-geolocate,.mapboxgl-ctrl-zoom-in,.mapboxgl-ctrl-zoom-out{border-radius:10px !important;}
+.mapboxgl-ctrl-group{border-radius:12px !important;box-shadow:0 2px 10px rgba(0,0,0,.15) !important;}
 .map-tile-btn{position:absolute;top:14px;right:14px;z-index:999;background:rgba(255,255,255,.95);border:1px solid rgba(0,0,0,.12);border-radius:100px;padding:7px 14px;font-size:12px;font-weight:700;font-family:'Inter',sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.15);}
 /* ── LOAD SHEDDING EASTER EGG ── */
 @keyframes lsDropIn{0%{transform:translateY(-80px) translateX(-50%);opacity:0;}18%{transform:translateY(4px) translateX(-50%);opacity:1;}28%{transform:translateY(-2px) translateX(-50%);}36%{transform:translateY(0) translateX(-50%);}100%{transform:translateY(0) translateX(-50%);}}
@@ -1513,48 +1611,50 @@ input,select,textarea{font-size:16px !important;}
 const Ico = ({icon:I, size=16, color="currentColor", strokeWidth=2}) =>
   <I size={size} color={color} strokeWidth={strokeWidth}/>;
 
-/* ─── LOCATION PICKER COMPONENT ─── */
+/* ─── LOCATION PICKER COMPONENT (Mapbox GL) ─── */
 function LocationPicker({ lat, lng, onChange, darkMode }) {
-  const DEFAULT = [24.8607, 67.0011];
-  const [pos, setPos] = useState([lat || DEFAULT[0], lng || DEFAULT[1]]);
-  const markerRef = useRef(null);
-
-  const TILE_URL = darkMode
-    ? 'https://cartodb-basemaps-a.global.ssl.fastly.net/dark_all/{z}/{x}/{y}.png'
-    : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-  const TILE_ATTR = darkMode ? '© CartoDB' : '© OpenStreetMap contributors';
-
-  const pinIcon = L.divIcon({ className:'', html:'<div class="map-pin"></div>', iconSize:[28,36], iconAnchor:[14,36] });
+  const DEFAULT_LNG = 67.0011, DEFAULT_LAT = 24.8607;
+  const [markerLng, setMarkerLng] = useState(lng || DEFAULT_LNG);
+  const [markerLat, setMarkerLat] = useState(lat || DEFAULT_LAT);
+  const [viewState, setViewState] = useState({
+    longitude: lng || DEFAULT_LNG,
+    latitude:  lat || DEFAULT_LAT,
+    zoom: 13,
+  });
 
   const handleGPS = () => {
-    navigator.geolocation?.getCurrentPosition(
-      p => { const c = [p.coords.latitude, p.coords.longitude]; setPos(c); onChange(c[0], c[1]); },
-      () => {}
-    );
+    navigator.geolocation?.getCurrentPosition(p => {
+      const la = p.coords.latitude, lo = p.coords.longitude;
+      setMarkerLat(la); setMarkerLng(lo);
+      setViewState(v => ({...v, latitude: la, longitude: lo}));
+      onChange(la, lo);
+    }, () => {});
   };
 
   return (
     <div>
       <div style={{borderRadius:12,overflow:'hidden',height:220,width:'100%',border:'1.5px solid var(--border)'}}>
-        <MapContainer
-          center={pos} zoom={13}
-          style={{height:'100%',width:'100%'}}
-          zoomControl={false}
+        <MapGL
+          {...viewState}
+          onMove={e => setViewState(e.viewState)}
+          style={{width:'100%',height:'100%'}}
+          mapStyle={darkMode ? MB_DARK : MB_STREETS}
+          mapboxAccessToken={MAPBOX_TOKEN}
         >
-          <TileLayer key={darkMode?'dark':'light'} url={TILE_URL} attribution={TILE_ATTR}/>
-          <Marker
-            position={pos}
-            icon={pinIcon}
-            draggable={true}
-            ref={markerRef}
-            eventHandlers={{
-              dragend: () => {
-                const m = markerRef.current;
-                if (m) { const {lat:la,lng:lo} = m.getLatLng(); const c=[la,lo]; setPos(c); onChange(la,lo); }
-              }
+          <MapMarker
+            longitude={markerLng}
+            latitude={markerLat}
+            anchor="bottom"
+            draggable
+            onDragEnd={e => {
+              const {lng: lo, lat: la} = e.lngLat;
+              setMarkerLng(lo); setMarkerLat(la);
+              onChange(la, lo);
             }}
-          />
-        </MapContainer>
+          >
+            <div className="map-pin"/>
+          </MapMarker>
+        </MapGL>
       </div>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:8,gap:10}}>
         <div style={{fontSize:11,color:'var(--ink4)',lineHeight:1.4}}>
@@ -1572,82 +1672,42 @@ function LocationPicker({ lat, lng, onChange, darkMode }) {
   );
 }
 
-/* Flies the leaflet map to the user's GPS position when it becomes available */
-function FlyToUser({ pos }) {
-  const map = useMap();
-  useEffect(() => {
-    if (pos) map.flyTo(pos, 15, { animate: true, duration: 1.5 });
-  }, [pos]);
-  return null;
-}
-
-/* Calls invalidateSize on mount, on every dark-mode toggle, and whenever the map
-   tab becomes active — plus a ResizeObserver for any other container size changes. */
-function ResizeMap({ darkMode, isActive }) {
-  const map = useMap();
-
-  // Mount: fill container immediately
-  useEffect(() => {
-    map.invalidateSize({ pan: false });
-    const container = map.getContainer();
-    const ro = new ResizeObserver(() => map.invalidateSize({ pan: false }));
-    ro.observe(container);
-    return () => ro.disconnect();
-  }, [map]);
-
-  // Dark-mode toggle: re-fill after the DOM has repainted
-  useEffect(() => {
-    const t = setTimeout(() => map.invalidateSize({ pan: false }), 100);
-    return () => clearTimeout(t);
-  }, [darkMode]);
-
-  // Tab navigation: re-fill whenever the map screen becomes visible
-  useEffect(() => {
-    if (!isActive) return;
-    const t = setTimeout(() => map.invalidateSize({ pan: false }), 100);
-    return () => clearTimeout(t);
-  }, [isActive]);
-
-  return null;
-}
-
-/* ─── MAP SCREEN COMPONENT ─── */
-function MapScreen({ grounds, darkMode, onBookGround, isActive }) {
-  const [tileMode, setTileMode] = useState(() => darkMode ? 'dark' : 'osm');
-  const [userPos,  setUserPos]  = useState(null);
-  const [selected, setSelected] = useState(null);
+/* ─── MAP SCREEN COMPONENT (Mapbox GL) ─── */
+function MapScreen({ grounds, darkMode, onBookGround }) {
+  const [selected,    setSelected]    = useState(null);
+  const [satellite,   setSatellite]   = useState(false);
   // Load shedding easter egg
-  const [lsOverride, setLsOverride]   = useState(false);   // user toggled map light while app is dark
-  const [lsPillState, setLsPillState] = useState('hidden'); // hidden | animating | shrinking | resting
+  const [lsOverride,  setLsOverride]  = useState(false);
+  const [lsPillState, setLsPillState] = useState('hidden');
   const lsAnimTimers = useRef([]);
-  const lsShownRef   = useRef(false); // only animate once per dark-mode session
+  const lsShownRef   = useRef(false);
+  const mapRef       = useRef(null);
 
-  // Sync tile with dark mode changes
+  // Active Mapbox style — darkMode uses dark-v11 unless lsOverride or satellite
+  const activeStyle = satellite
+    ? MB_SATELLITE
+    : (darkMode && !lsOverride ? MB_DARK : MB_STREETS);
+
+  // Load shedding pill: sync with darkMode
   useEffect(() => {
-    if (darkMode) {
-      if (!lsOverride) setTileMode('dark');
-    } else {
-      setTileMode(prev => prev === 'dark' ? 'osm' : prev);
+    if (!darkMode) {
       setLsOverride(false);
       setLsPillState('hidden');
       lsShownRef.current = false;
     }
   }, [darkMode]);
 
-  // Trigger entrance animation when map is dark and pill hasn't shown yet
+  // Trigger entrance animation once per dark-mode session
   useEffect(() => {
     if (darkMode && !lsOverride && lsPillState === 'hidden' && !lsShownRef.current) {
       lsShownRef.current = true;
-      // Small delay so map has painted first
       const t1 = setTimeout(() => {
         setLsPillState('animating');
-        // After drop+expand animation (0.55s + 0.4s = 0.95s), wait 3s showing full pill, then shrink
         const t2 = setTimeout(() => {
           setLsPillState('shrinking');
-          // After shrink animation (0.45s) set to resting
           const t3 = setTimeout(() => setLsPillState('resting'), 500);
           lsAnimTimers.current.push(t3);
-        }, 0.95 * 1000 + 3000);
+        }, 3950);
         lsAnimTimers.current.push(t2);
       }, 400);
       lsAnimTimers.current.push(t1);
@@ -1655,93 +1715,78 @@ function MapScreen({ grounds, darkMode, onBookGround, isActive }) {
     return () => { lsAnimTimers.current.forEach(clearTimeout); lsAnimTimers.current = []; };
   }, [darkMode, lsOverride]);
 
-  // Request GPS once on mount
-  useEffect(() => {
-    navigator.geolocation?.getCurrentPosition(
-      pos => setUserPos([pos.coords.latitude, pos.coords.longitude]),
-      () => {} // silently fall back to default Karachi centre
-    );
-  }, []);
-
-  const TILES = {
-    osm:       { url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',                                                                     attr: '© OpenStreetMap contributors' },
-    satellite: { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attr: '© Esri' },
-    dark:      { url: 'https://cartodb-basemaps-a.global.ssl.fastly.net/dark_all/{z}/{x}/{y}.png',                    attr: '© CartoDB' },
-  };
-
-  // Resolve which tile to actually show (lsOverride forces osm even in dark mode)
-  const activeTile = darkMode && !lsOverride ? 'dark' : tileMode === 'dark' ? 'osm' : tileMode;
-
-  const greenIcon = L.divIcon({ className:'', html:'<div class="map-pin"></div>',      iconSize:[28,36], iconAnchor:[14,36] });
-  const userIcon  = L.divIcon({ className:'', html:'<div class="map-user-dot"></div>', iconSize:[20,20], iconAnchor:[10,10] });
-
   const handleLsPillTap = () => {
-    // Clear any pending intro animations
     lsAnimTimers.current.forEach(clearTimeout);
     lsAnimTimers.current = [];
     if (!lsOverride) {
-      // Turn on the lights!
       setLsOverride(true);
-      setTileMode('osm');
+      setSatellite(false);
       setLsPillState('resting');
     } else {
-      // Back to load shedding
       setLsOverride(false);
-      setTileMode('dark');
       setLsPillState('resting');
     }
   };
 
   const lsPillVisible = darkMode && lsPillState !== 'hidden';
-  const lsPillClass = `ls-pill${lsOverride ? ' bijli' : ''}${lsPillState === 'animating' ? ' animating' : lsPillState === 'shrinking' ? ' shrinking' : lsPillState === 'resting' ? ' resting' : ''}`;
+  const lsPillClass   = `ls-pill${lsOverride ? ' bijli' : ''}${
+    lsPillState === 'animating' ? ' animating' :
+    lsPillState === 'shrinking' ? ' shrinking' :
+    lsPillState === 'resting'   ? ' resting'   : ''}`;
+
+  const groundsWithCoords = grounds.filter(g => g.latitude && g.longitude);
 
   return (
     <div style={{position:'relative', width:'100%', height:'100%'}}>
-      <MapContainer
-        center={[24.8607, 67.0011]}
-        zoom={12}
-        style={{height:'100%', width:'100%'}}
-        zoomControl={false}
+      <MapGL
+        ref={mapRef}
+        initialViewState={{ longitude: 67.0011, latitude: 24.8607, zoom: 12 }}
+        style={{ width: '100%', height: '100%' }}
+        mapStyle={activeStyle}
+        mapboxAccessToken={MAPBOX_TOKEN}
         minZoom={3}
-        maxBounds={[[-85.051129, -180], [85.051129, 180]]}
-        maxBoundsViscosity={1.0}
       >
-        <TileLayer key={activeTile} url={TILES[activeTile].url} attribution={TILES[activeTile].attr}/>
+        {/* GPS blue dot + re-center button */}
+        <GeolocateControl
+          position="top-right"
+          trackUserLocation
+          showUserHeading
+          showAccuracyCircle={false}
+        />
+        <NavigationControl position="top-right" showCompass={false}/>
 
-        {grounds.map(g => g.latitude && g.longitude ? (
-          <Marker
+        {/* Ground pins */}
+        {groundsWithCoords.map(g => (
+          <MapMarker
             key={g.id}
-            position={[g.latitude, g.longitude]}
-            icon={greenIcon}
-            eventHandlers={{ click: () => setSelected(g) }}
-          />
-        ) : null)}
+            longitude={g.longitude}
+            latitude={g.latitude}
+            anchor="bottom"
+            onClick={e => { e.originalEvent.stopPropagation(); setSelected(g); }}
+          >
+            <div className="map-pin"/>
+          </MapMarker>
+        ))}
+      </MapGL>
 
-        {userPos && <Marker position={userPos} icon={userIcon}/>}
-        <FlyToUser pos={userPos}/>
-        <ResizeMap darkMode={darkMode} isActive={isActive}/>
-      </MapContainer>
-
-      {/* Satellite toggle — only shown in light mode (or when override is active) */}
+      {/* Satellite toggle — light mode only (or when lsOverride is on) */}
       {(!darkMode || lsOverride) && (
         <button className="map-tile-btn"
-          onClick={() => setTileMode(t => t === 'satellite' ? 'osm' : 'satellite')}>
-          {tileMode === 'satellite' ? '🗺 Map' : '🛰 Satellite'}
+          onClick={() => setSatellite(s => !s)}>
+          {satellite ? '🗺 Map' : '🛰 Satellite'}
         </button>
       )}
 
-      {/* ── Load Shedding Easter Egg pill ── */}
+      {/* Load Shedding Easter Egg pill */}
       {lsPillVisible && (
         <button className={lsPillClass} onClick={handleLsPillTap}>
-          {lsOverride ? (
-            <>✨ Bijli Aa Gai</>
-          ) : (
-            <><span className="ls-candle">🕯️</span> Load Shedding Map</>
-          )}
+          {lsOverride
+            ? <>✨ Bijli Aa Gai</>
+            : <><span className="ls-candle">🕯️</span> Load Shedding Map</>}
         </button>
       )}
 
-      {/* Ground popup card */}
+      {/* Ground info card */}
       {selected && (
         <div className="map-popup">
           <button className="map-popup-close" onClick={() => setSelected(null)}>
@@ -1752,7 +1797,7 @@ function MapScreen({ grounds, darkMode, onBookGround, isActive }) {
             <MapPin size={11} strokeWidth={2}/> {selected.area}
           </div>
           <div className="map-popup-meta">
-            {selected.rating && (
+            {selected.rating > 0 && (
               <span className="map-popup-rating">
                 <Star size={11} fill="#F59E0B" color="#F59E0B" strokeWidth={0}/> {selected.rating}
               </span>
@@ -2589,7 +2634,7 @@ export default function Outfield() {
       const timeFrom = curSlot.startTime || curSlot.time?.split("–")[0] || "00:00";
       const timeTo   = curSlot.endTime   || curSlot.time?.split("–")[1] || "02:00";
       const courtId  = court?.id || null;
-      await supabase.from('bookings').insert({
+      const { error: bkErr } = await supabase.from('bookings').insert({
         court_id:       courtId,
         player_id:      session.user.id,
         booking_date:   date,
@@ -2602,6 +2647,11 @@ export default function Outfield() {
         booking_ref:    ref,
         lfp_on:         lfp
       });
+      if (bkErr) {
+        setBookingCount(p => p - 1);
+        showToast("Booking failed: " + (bkErr.message || "Please try again."));
+        return;
+      }
       // Mark slot as booked immediately in local state
       setRealSlots(prev => prev.map(s => s.startTime === timeFrom ? {...s, booked: true} : s));
       setBookedSlotKeys(prev => new Set([...prev, `${courtId}_${date}_${timeFrom}`]));
@@ -3047,10 +3097,10 @@ export default function Outfield() {
 
         {/* ═══ TAB STRIP + MAP OVERLAY ═══ */}
         {['home','explore','map','match','profile'].includes(screen) && (<>
-          <div style={{overflow:'hidden',width:'100%',position:'relative',flex:1}}>
-            <div style={{display:'flex',width:'500%',transform:`translateX(-${tabIndex * 20}%)`,transition:'transform 0.32s cubic-bezier(0.25,0.46,0.45,0.94)',willChange:'transform'}}>
+          <div style={{overflow:'hidden',width:'100%',position:'relative',height:'calc(100svh - 72px)'}}>
+            <div style={{display:'flex',width:'500%',height:'100%',transform:`translateX(-${tabIndex * 20}%)`,transition:'transform 0.32s cubic-bezier(0.25,0.46,0.45,0.94)',willChange:'transform'}}>
               {/* HOME PANEL */}
-              <div style={{width:'20%',flexShrink:0,overflowY:'auto',minHeight:'calc(100svh - 72px)'}}>
+              <div style={{width:'20%',flexShrink:0,overflowY:'auto',height:'100%',overscrollBehavior:'contain'}}>
         {authUser?.role === "owner" && (() => {
           const totalBookings = ownerBookings.length;
           const totalRevenue  = ownerBookings.reduce((s,b) => s + (b.total_price||0), 0);
@@ -3431,7 +3481,7 @@ export default function Outfield() {
               </div>
 
               {/* EXPLORE PANEL */}
-              <div style={{width:'20%',flexShrink:0,overflowY:'auto',minHeight:'calc(100svh - 72px)'}}>
+              <div style={{width:'20%',flexShrink:0,overflowY:'auto',height:'100%',overscrollBehavior:'contain'}}>
                 <div className="screen active explore">
             <div className="exp-head">
               <div className="exp-title" style={{display:"flex",alignItems:"center",gap:9}}>
@@ -3545,7 +3595,7 @@ export default function Outfield() {
               <div style={{width:'20%',flexShrink:0}}/>
 
               {/* MATCH PANEL */}
-              <div style={{width:'20%',flexShrink:0,overflowY:'auto',minHeight:'calc(100svh - 72px)'}}>
+              <div style={{width:'20%',flexShrink:0,overflowY:'auto',height:'100%',overscrollBehavior:'contain'}}>
                 <div className="screen active match">
             <div className="match-head">
               <div className="match-glow"/>
@@ -3777,7 +3827,7 @@ export default function Outfield() {
               </div>
 
               {/* PROFILE PANEL */}
-              <div style={{width:'20%',flexShrink:0,overflowY:'auto',minHeight:'calc(100svh - 72px)'}}>
+              <div style={{width:'20%',flexShrink:0,overflowY:'auto',height:'100%',overscrollBehavior:'contain'}}>
                 <div className="screen active profile">
             {/* Cancel confirmation dialog */}
             {cancelConfirmId && (
@@ -3963,9 +4013,13 @@ export default function Outfield() {
               Lives outside the sliding strip so dark-mode re-renders never
               unmount it. visibility:hidden keeps Leaflet alive and measuring. */}
           <div style={{
-            position: 'absolute',
-            top: 0, left: 0, right: 0,
-            height: 'calc(100dvh - 64px)',
+            position: 'fixed',
+            top: 0,
+            bottom: 72,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: '100%',
+            maxWidth: 430,
             zIndex: 50,
             visibility: nav === 'map' ? 'visible' : 'hidden',
             pointerEvents: nav === 'map' ? 'auto' : 'none',
@@ -3974,7 +4028,6 @@ export default function Outfield() {
               grounds={dbGrounds.length > 0 ? dbGrounds : GROUNDS}
               darkMode={darkMode}
               onBookGround={(g) => { openGround(g); }}
-              isActive={nav === 'map'}
             />
           </div>
         </>)}
