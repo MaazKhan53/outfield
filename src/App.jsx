@@ -1696,7 +1696,7 @@ function MapScreen({ grounds, darkMode, onBookGround, isActive }) {
   const lsPillClass = `ls-pill${lsOverride ? ' bijli' : ''}${lsPillState === 'animating' ? ' animating' : lsPillState === 'shrinking' ? ' shrinking' : lsPillState === 'resting' ? ' resting' : ''}`;
 
   return (
-    <div style={{position:'relative', width:'100%', height:'calc(100svh - 64px)'}}>
+    <div style={{position:'relative', width:'100%', height:'100%'}}>
       <MapContainer
         center={[24.8607, 67.0011]}
         zoom={12}
@@ -3015,8 +3015,8 @@ export default function Outfield() {
           </div>
         )}
 
-        {/* ═══ TAB STRIP ═══ */}
-        {['home','explore','map','match','profile'].includes(screen) && (
+        {/* ═══ TAB STRIP + MAP OVERLAY ═══ */}
+        {['home','explore','map','match','profile'].includes(screen) && (<>
           <div style={{overflow:'hidden',width:'100%',position:'relative',flex:1}}>
             <div style={{display:'flex',width:'500%',transform:`translateX(-${tabIndex * 20}%)`,transition:'transform 0.32s cubic-bezier(0.25,0.46,0.45,0.94)',willChange:'transform'}}>
               {/* HOME PANEL */}
@@ -3511,17 +3511,8 @@ export default function Outfield() {
                 </div>
               </div>
 
-              {/* MAP PANEL */}
-              <div style={{width:'20%',flexShrink:0}}>
-                <div className="map-screen">
-                  <MapScreen
-                    grounds={dbGrounds.length > 0 ? dbGrounds : GROUNDS}
-                    darkMode={darkMode}
-                    onBookGround={(g) => { setGround(g); setScreen("ground"); }}
-                    isActive={nav === 'map'}
-                  />
-                </div>
-              </div>
+              {/* MAP PANEL — empty placeholder, real map rendered as overlay below */}
+              <div style={{width:'20%',flexShrink:0}}/>
 
               {/* MATCH PANEL */}
               <div style={{width:'20%',flexShrink:0,overflowY:'auto',minHeight:'calc(100svh - 72px)'}}>
@@ -3937,7 +3928,25 @@ export default function Outfield() {
               </div>
             </div>
           </div>
-        )}
+
+          {/* ── MAP OVERLAY ─────────────────────────────────────────────────────
+              Lives outside the sliding strip so dark-mode re-renders never
+              unmount it. visibility:hidden keeps Leaflet alive and measuring. */}
+          <div style={{
+            position: 'absolute',
+            top: 0, left: 0, right: 0,
+            height: 'calc(100dvh - 64px)',
+            zIndex: 50,
+            visibility: nav === 'map' ? 'visible' : 'hidden',
+          }}>
+            <MapScreen
+              grounds={dbGrounds.length > 0 ? dbGrounds : GROUNDS}
+              darkMode={darkMode}
+              onBookGround={(g) => { setGround(g); setScreen('ground'); }}
+              isActive={nav === 'map'}
+            />
+          </div>
+        </>)}
 
         {/* ═══ DETAIL ═══ */}
         {screen === "detail" && ground && (
