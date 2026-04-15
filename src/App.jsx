@@ -1712,11 +1712,27 @@ function MapFixer({ isActive }) {
   return null;
 }
 
+/* ── Fly to a target position when isActive turns true ── */
+function FlyToPosition({ target, isActive }) {
+  const map = useMap();
+  const didFly = useRef(false);
+  useEffect(() => {
+    if (isActive && target && !didFly.current) {
+      didFly.current = true;
+      setTimeout(() => map.flyTo(target, 14, { animate: true, duration: 1.2 }), 120);
+    }
+    if (!isActive) didFly.current = false;
+  }, [isActive, target, map]);
+  return null;
+}
+
 /* ─── MAP SCREEN COMPONENT (Leaflet) ─── */
-function MapScreen({ grounds, darkMode, isActive, onBookGround }) {
+function MapScreen({ grounds, darkMode, isActive, onBookGround, ownerId }) {
   const [selected,    setSelected]    = useState(null);
   const [satellite,   setSatellite]   = useState(false);
   const [userPos,     setUserPos]     = useState(null);
+  const [myGroundsOnly, setMyGroundsOnly] = useState(false);
+  const [flyTarget,   setFlyTarget]   = useState(null);
   // Load shedding easter egg
   const [lsOverride,  setLsOverride]  = useState(false);
   const [lsPillState, setLsPillState] = useState('hidden');
@@ -1756,6 +1772,19 @@ function MapScreen({ grounds, darkMode, isActive, onBookGround }) {
     return () => { lsAnimTimers.current.forEach(clearTimeout); lsAnimTimers.current = []; };
   }, [darkMode, lsOverride]);
 
+  // Auto-fly to user GPS whenever the map tab is opened
+  useEffect(() => {
+    if (!isActive) return;
+    navigator.geolocation?.getCurrentPosition(
+      p => {
+        const pos = [p.coords.latitude, p.coords.longitude];
+        setUserPos(pos);
+        setFlyTarget(pos);
+      },
+      () => setFlyTarget([24.8607, 67.0011]) // fallback: Karachi
+    );
+  }, [isActive]);
+
   const handleLsPillTap = () => {
     lsAnimTimers.current.forEach(clearTimeout);
     lsAnimTimers.current = [];
@@ -1782,6 +1811,9 @@ function MapScreen({ grounds, darkMode, isActive, onBookGround }) {
     lsPillState === 'resting'   ? ' resting'   : ''}`;
 
   const groundsWithCoords = grounds.filter(g => g.latitude && g.longitude);
+  const displayGrounds = (myGroundsOnly && ownerId)
+    ? groundsWithCoords.filter(g => g.owner_id === ownerId)
+    : groundsWithCoords;
 
   return (
     <div style={{position:'relative', width:'100%', height:'100%'}}>
@@ -1793,13 +1825,14 @@ function MapScreen({ grounds, darkMode, isActive, onBookGround }) {
         zoomControl={false}
       >
         <MapFixer isActive={isActive}/>
+        <FlyToPosition target={flyTarget} isActive={isActive}/>
         <TileLayer url={tileUrl} attribution={tileAttr} keepBuffer={4} updateWhenZooming={false}/>
 
         {/* GPS blue dot */}
         {userPos && <Marker position={userPos} icon={BLUE_DOT}/>}
 
         {/* Ground pins */}
-        {groundsWithCoords.map(g => (
+        {displayGrounds.map(g => (
           <Marker
             key={g.id}
             position={[g.latitude, g.longitude]}
@@ -1816,6 +1849,26 @@ function MapScreen({ grounds, darkMode, isActive, onBookGround }) {
       >
         <Navigation size={16} strokeWidth={2} color="#3B82F6"/>
       </button>
+
+      {/* My Grounds toggle — only visible to owners */}
+      {ownerId && (
+        <button
+          onClick={() => setMyGroundsOnly(v => !v)}
+          style={{
+            position:'absolute', top:14, left:14, zIndex:999,
+            padding:'7px 14px', borderRadius:100,
+            background: myGroundsOnly ? '#16A34A' : 'rgba(255,255,255,.95)',
+            color: myGroundsOnly ? '#fff' : '#374151',
+            border: myGroundsOnly ? 'none' : '1px solid rgba(0,0,0,.12)',
+            fontWeight:700, fontSize:12, fontFamily:"'Inter',sans-serif",
+            cursor:'pointer', boxShadow:'0 2px 10px rgba(0,0,0,.15)',
+            display:'flex', alignItems:'center', gap:5,
+            transition:'all .2s'
+          }}
+        >
+          <MapPin size={12} strokeWidth={2.5}/> My Grounds
+        </button>
+      )}
 
       {/* Satellite toggle — light mode only (or when lsOverride is on) */}
       {(!darkMode || lsOverride) && (
@@ -1986,6 +2039,8 @@ export default function Outfield() {
   const [photoUploading, setPhotoUploading]       = useState(false);
   // Feature: owner listing email state
   const [ownerSubmitSuccess, setOwnerSubmitSuccess] = useState(false);
+  // Onboarding role restriction message
+  const [obRoleMsg, setObRoleMsg] = useState(null); // null | 'player-listing' | 'owner-booking'
   const MAX_BOOKINGS = 2;
   const [dbGrounds, setDbGrounds]             = useState([]);
   const [userGps, setUserGps]                 = useState(null); // [lat, lon] from browser GPS
@@ -3118,7 +3173,10 @@ export default function Outfield() {
                 {/* Role selector */}
                 <div className="ob-role-label">I want to</div>
                 <div className="ob-roles">
-                  <div className="ob-role-card player" onClick={()=>{setScreen("home");setNav("home");}}>
+                  <div className="ob-role-card player" onClick={()=>{
+                    if (authUser?.role === 'owner') { setObRoleMsg('owner-booking'); return; }
+                    setScreen("home"); setNav("home");
+                  }}>
                     <div className="ob-role-ico">
                       <span style={{fontSize:22}}>⚽</span>
                     </div>
@@ -3128,7 +3186,10 @@ export default function Outfield() {
                       <ChevronRight size={13} color="var(--green-v)" strokeWidth={2.5}/>
                     </div>
                   </div>
-                  <div className="ob-role-card owner" onClick={()=>{setScreen("owner");setNav("home");}}>
+                  <div className="ob-role-card owner" onClick={()=>{
+                    if (authUser?.role === 'player') { setObRoleMsg('player-listing'); return; }
+                    setScreen("owner"); setNav("home");
+                  }}>
                     <div className="ob-role-ico">
                       <span style={{fontSize:22}}>🏟️</span>
                     </div>
@@ -3141,6 +3202,35 @@ export default function Outfield() {
                 </div>
               </div>
             </div>
+
+            {/* Role restriction overlay */}
+            {obRoleMsg && (
+              <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,.75)',zIndex:20,display:'flex',alignItems:'flex-end',justifyContent:'center',padding:'0 0 40px'}}>
+                <div style={{background:'#fff',borderRadius:24,padding:'28px 24px',maxWidth:340,width:'90%',textAlign:'center'}}>
+                  {obRoleMsg === 'player-listing' ? (<>
+                    <div style={{fontSize:36,marginBottom:12}}>🏟️</div>
+                    <div style={{fontFamily:"'Sora',sans-serif",fontWeight:800,fontSize:17,color:'#0F172A',marginBottom:8}}>Owner accounts only</div>
+                    <div style={{fontSize:13,color:'#64748B',lineHeight:1.6,marginBottom:20}}>Listing a ground requires an owner account. Sign up as an owner to manage your venue and receive bookings for free.</div>
+                    <button style={{width:'100%',padding:'13px 0',borderRadius:14,background:'#F97316',color:'#fff',fontWeight:700,fontSize:14,border:'none',cursor:'pointer',marginBottom:10}} onClick={()=>{setObRoleMsg(null);setScreen('home');setNav('home');}}>
+                      Sign up as Owner
+                    </button>
+                    <button style={{width:'100%',padding:'11px 0',borderRadius:14,background:'#F1F5F9',color:'#64748B',fontWeight:600,fontSize:13,border:'none',cursor:'pointer'}} onClick={()=>setObRoleMsg(null)}>
+                      Go Back
+                    </button>
+                  </>) : (<>
+                    <div style={{fontSize:36,marginBottom:12}}>🏆</div>
+                    <div style={{fontFamily:"'Sora',sans-serif",fontWeight:800,fontSize:17,color:'#0F172A',marginBottom:8}}>Your account is for owners</div>
+                    <div style={{fontSize:13,color:'#64748B',lineHeight:1.6,marginBottom:20}}>Your owner account is set up for managing grounds and receiving bookings. Head to your owner dashboard to manage your venue.</div>
+                    <button style={{width:'100%',padding:'13px 0',borderRadius:14,background:'#16A34A',color:'#fff',fontWeight:700,fontSize:14,border:'none',cursor:'pointer',marginBottom:10}} onClick={()=>{setObRoleMsg(null);setScreen('home');setNav('home');}}>
+                      Go to Dashboard
+                    </button>
+                    <button style={{width:'100%',padding:'11px 0',borderRadius:14,background:'#F1F5F9',color:'#64748B',fontWeight:600,fontSize:13,border:'none',cursor:'pointer'}} onClick={()=>setObRoleMsg(null)}>
+                      Go Back
+                    </button>
+                  </>)}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -4078,6 +4168,7 @@ export default function Outfield() {
               darkMode={darkMode}
               isActive={nav === 'map'}
               onBookGround={(g) => { openGround(g); }}
+              ownerId={authUser?.role === 'owner' ? session?.user?.id : null}
             />
           </div>
         </>)}
@@ -5988,16 +6079,33 @@ export default function Outfield() {
         {/* ═══ NAV BAR ═══ */}
         {!["splash","onboard","success","owner"].includes(screen) && (
           <div className="navbar">
-            {[
-              {id:"home",    Icon:Home,    label:"Home"},
-              {id:"explore", Icon:Compass, label:"Explore"},
-              {id:"map",     Icon:Map,     label:"Map"},
-              {id:"match",   Icon:UserPlus,label:"Matchmaking"},
-              {id:"profile", Icon:User,    label:"Profile"},
-            ].map(n=>{
-              const on = nav===n.id;
+            {(authUser?.role === 'owner'
+              ? [
+                  {id:"home",    Icon:Home,    label:"Home"},
+                  {id:"map",     Icon:Map,     label:"Map"},
+                  {id:"chats",   Icon:Radio,   label:"Chats"},
+                  {id:"profile", Icon:User,    label:"Profile"},
+                ]
+              : [
+                  {id:"home",    Icon:Home,    label:"Home"},
+                  {id:"explore", Icon:Compass, label:"Explore"},
+                  {id:"map",     Icon:Map,     label:"Map"},
+                  {id:"match",   Icon:UserPlus,label:"Matchmaking"},
+                  {id:"profile", Icon:User,    label:"Profile"},
+                ]
+            ).map(n=>{
+              // "chats" owner tab is visually active when match panel is showing
+              const on = n.id === "chats" ? nav === "match" : nav === n.id;
               return (
-                <div key={n.id} className={`nav-item ${on?"on":""}`} onClick={()=>goNav(n.id)}>
+                <div key={n.id} className={`nav-item ${on?"on":""}`} onClick={()=>{
+                  if (n.id === "chats") {
+                    setMatchTab("chats");
+                    fetchChatRooms();
+                    goNav("match");
+                  } else {
+                    goNav(n.id);
+                  }
+                }}>
                   <div className="nav-ico-wrap">
                     <n.Icon size={20} color={on?"var(--green-d)":"var(--ink4)"} strokeWidth={on?2.5:2}/>
                   </div>
