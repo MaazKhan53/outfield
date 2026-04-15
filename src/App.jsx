@@ -135,8 +135,16 @@ CREATE TABLE IF NOT EXISTS feedback (id uuid PRIMARY KEY DEFAULT gen_random_uuid
 */
 import { useState, useEffect, useRef } from "react";
 import { supabase } from './supabase';
-import MapGL, { Marker as MapMarker, GeolocateControl, NavigationControl } from 'react-map-gl/mapbox';
-import 'mapbox-gl/dist/mapbox-gl.css';
+import { MapContainer, TileLayer, Marker, useMap, Circle } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+// Fix default Leaflet marker icons (Vite asset pipeline strips them otherwise)
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+});
 import {
   MapPin, Search, Bell, Star, Clock, ChevronRight, Heart,
   Users, Zap, Shield, ArrowLeft, Filter, Phone, Share2,
@@ -148,11 +156,16 @@ import {
   Activity, Target, Award, Radio, RefreshCw, Map
 } from "lucide-react";
 
-/* ─── MAPBOX CONFIG ─── */
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
-const MB_STREETS   = 'mapbox://styles/mapbox/streets-v12';
-const MB_DARK      = 'mapbox://styles/mapbox/dark-v11';
-const MB_SATELLITE = 'mapbox://styles/mapbox/satellite-streets-v12';
+/* ─── LEAFLET TILE CONFIG (all free, no API key) ─── */
+const TILE_LIGHT     = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+const TILE_DARK      = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+const TILE_SATELLITE = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+const ATTR_CARTO     = '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
+const ATTR_ESRI      = 'Tiles &copy; Esri';
+// Custom green pin DivIcon for grounds
+const GREEN_PIN = L.divIcon({ className: 'map-pin-wrap', html: '<div class="map-pin"></div>', iconSize: [22, 22], iconAnchor: [11, 22] });
+// Blue dot for user GPS
+const BLUE_DOT  = L.divIcon({ className: 'map-pin-wrap', html: '<div class="map-user-dot"></div>', iconSize: [16, 16], iconAnchor: [8, 8] });
 
 /* ─── DATA ─── */
 const SPORTS = [
@@ -1497,11 +1510,20 @@ input,select,textarea{font-size:16px !important;}
 .dm-toggle.off::after{left:3px;}
 
 /* ── MAP SCREEN ── */
+.map-pin-wrap{background:transparent;border:none;}
 .map-pin{width:22px;height:22px;background:#22C55E;border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 10px rgba(34,197,94,.5);cursor:pointer;}
 .map-pin:hover{transform:rotate(-45deg) scale(1.2);}
-/* Override default Mapbox GL control styling to match app theme */
-.mapboxgl-ctrl-geolocate,.mapboxgl-ctrl-zoom-in,.mapboxgl-ctrl-zoom-out{border-radius:10px !important;}
-.mapboxgl-ctrl-group{border-radius:12px !important;box-shadow:0 2px 10px rgba(0,0,0,.15) !important;}
+/* Blue GPS dot */
+.map-user-dot{width:16px;height:16px;background:#3B82F6;border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 4px rgba(59,130,246,.25);}
+/* Leaflet container — bg matches tile palette so no gap on load/mode switch */
+.leaflet-container{background:#e5e3df !important;outline:none;}
+.app.dark .leaflet-container{background:#1c1c1c !important;}
+/* Hide default Leaflet attribution (keep it legally present but tiny) */
+.leaflet-control-attribution{font-size:9px;opacity:.5;}
+/* Zoom controls */
+.leaflet-control-zoom-in,.leaflet-control-zoom-out{border-radius:10px !important;font-size:18px !important;}
+.leaflet-control-zoom{border-radius:12px !important;box-shadow:0 2px 10px rgba(0,0,0,.15) !important;border:none !important;}
+.leaflet-control-zoom a{border:none !important;}
 .map-tile-btn{position:absolute;top:14px;right:14px;z-index:999;background:rgba(255,255,255,.95);border:1px solid rgba(0,0,0,.12);border-radius:100px;padding:7px 14px;font-size:12px;font-weight:700;font-family:'Inter',sans-serif;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.15);}
 /* ── LOAD SHEDDING EASTER EGG ── */
 @keyframes lsDropIn{0%{transform:translateY(-80px) translateX(-50%);opacity:0;}18%{transform:translateY(4px) translateX(-50%);opacity:1;}28%{transform:translateY(-2px) translateX(-50%);}36%{transform:translateY(0) translateX(-50%);}100%{transform:translateY(0) translateX(-50%);}}
@@ -1612,21 +1634,26 @@ const Ico = ({icon:I, size=16, color="currentColor", strokeWidth=2}) =>
   <I size={size} color={color} strokeWidth={strokeWidth}/>;
 
 /* ─── LOCATION PICKER COMPONENT (Mapbox GL) ─── */
+/* helper: flyTo inside LocationPicker when GPS fires */
+function PickerFly({ target }) {
+  const map = useMap();
+  useEffect(() => {
+    if (target) map.flyTo(target, 15, { animate: false });
+  }, [target, map]);
+  return null;
+}
+
 function LocationPicker({ lat, lng, onChange, darkMode }) {
   const DEFAULT_LNG = 67.0011, DEFAULT_LAT = 24.8607;
-  const [markerLng, setMarkerLng] = useState(lng || DEFAULT_LNG);
-  const [markerLat, setMarkerLat] = useState(lat || DEFAULT_LAT);
-  const [viewState, setViewState] = useState({
-    longitude: lng || DEFAULT_LNG,
-    latitude:  lat || DEFAULT_LAT,
-    zoom: 13,
-  });
+  const [pos, setPos]         = useState([lat || DEFAULT_LAT, lng || DEFAULT_LNG]);
+  const [flyTarget, setFlyTarget] = useState(null);
+  const DRAG_ICON = L.divIcon({ className:'map-pin-wrap', html:'<div class="map-pin"></div>', iconSize:[22,22], iconAnchor:[11,22] });
 
   const handleGPS = () => {
     navigator.geolocation?.getCurrentPosition(p => {
       const la = p.coords.latitude, lo = p.coords.longitude;
-      setMarkerLat(la); setMarkerLng(lo);
-      setViewState(v => ({...v, latitude: la, longitude: lo}));
+      setPos([la, lo]);
+      setFlyTarget([la, lo]);
       onChange(la, lo);
     }, () => {});
   };
@@ -1634,27 +1661,27 @@ function LocationPicker({ lat, lng, onChange, darkMode }) {
   return (
     <div>
       <div style={{borderRadius:12,overflow:'hidden',height:220,width:'100%',border:'1.5px solid var(--border)'}}>
-        <MapGL
-          {...viewState}
-          onMove={e => setViewState(e.viewState)}
+        <MapContainer
+          center={pos} zoom={13}
           style={{width:'100%',height:'100%'}}
-          mapStyle={darkMode ? MB_DARK : MB_STREETS}
-          mapboxAccessToken={MAPBOX_TOKEN}
+          zoomControl={false}
+          attributionControl={false}
         >
-          <MapMarker
-            longitude={markerLng}
-            latitude={markerLat}
-            anchor="bottom"
+          <TileLayer url={darkMode ? TILE_DARK : TILE_LIGHT} attribution={ATTR_CARTO} keepBuffer={4}/>
+          <PickerFly target={flyTarget}/>
+          <Marker
+            position={pos}
+            icon={DRAG_ICON}
             draggable
-            onDragEnd={e => {
-              const {lng: lo, lat: la} = e.lngLat;
-              setMarkerLng(lo); setMarkerLat(la);
-              onChange(la, lo);
+            eventHandlers={{
+              dragend: e => {
+                const {lat: la, lng: lo} = e.target.getLatLng();
+                setPos([la, lo]);
+                onChange(la, lo);
+              }
             }}
-          >
-            <div className="map-pin"/>
-          </MapMarker>
-        </MapGL>
+          />
+        </MapContainer>
       </div>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:8,gap:10}}>
         <div style={{fontSize:11,color:'var(--ink4)',lineHeight:1.4}}>
@@ -1672,23 +1699,37 @@ function LocationPicker({ lat, lng, onChange, darkMode }) {
   );
 }
 
-/* ─── MAP SCREEN COMPONENT (Mapbox GL) ─── */
-function MapScreen({ grounds, darkMode, onBookGround }) {
+/* ── Inside MapScreen: fixes invalidateSize whenever the map becomes visible ── */
+function MapFixer({ isActive }) {
+  const map = useMap();
+  useEffect(() => {
+    if (isActive) {
+      // Let the CSS visibility transition finish before measuring the container
+      const t = setTimeout(() => map.invalidateSize({ animate: false }), 80);
+      return () => clearTimeout(t);
+    }
+  }, [isActive, map]);
+  return null;
+}
+
+/* ─── MAP SCREEN COMPONENT (Leaflet) ─── */
+function MapScreen({ grounds, darkMode, isActive, onBookGround }) {
   const [selected,    setSelected]    = useState(null);
   const [satellite,   setSatellite]   = useState(false);
+  const [userPos,     setUserPos]     = useState(null);
   // Load shedding easter egg
   const [lsOverride,  setLsOverride]  = useState(false);
   const [lsPillState, setLsPillState] = useState('hidden');
   const lsAnimTimers = useRef([]);
   const lsShownRef   = useRef(false);
-  const mapRef       = useRef(null);
 
-  // Active Mapbox style — darkMode uses dark-v11 unless lsOverride or satellite
-  const activeStyle = satellite
-    ? MB_SATELLITE
-    : (darkMode && !lsOverride ? MB_DARK : MB_STREETS);
+  // Active tile URL
+  const tileUrl = satellite
+    ? TILE_SATELLITE
+    : (darkMode && !lsOverride ? TILE_DARK : TILE_LIGHT);
+  const tileAttr = satellite ? ATTR_ESRI : ATTR_CARTO;
 
-  // Load shedding pill: sync with darkMode
+  // Load shedding pill: reset when dark mode turns off
   useEffect(() => {
     if (!darkMode) {
       setLsOverride(false);
@@ -1728,6 +1769,12 @@ function MapScreen({ grounds, darkMode, onBookGround }) {
     }
   };
 
+  const handleGPS = () => {
+    navigator.geolocation?.getCurrentPosition(p => {
+      setUserPos([p.coords.latitude, p.coords.longitude]);
+    }, () => {});
+  };
+
   const lsPillVisible = darkMode && lsPillState !== 'hidden';
   const lsPillClass   = `ls-pill${lsOverride ? ' bijli' : ''}${
     lsPillState === 'animating' ? ' animating' :
@@ -1738,40 +1785,42 @@ function MapScreen({ grounds, darkMode, onBookGround }) {
 
   return (
     <div style={{position:'relative', width:'100%', height:'100%'}}>
-      <MapGL
-        ref={mapRef}
-        initialViewState={{ longitude: 67.0011, latitude: 24.8607, zoom: 12 }}
-        style={{ width: '100%', height: '100%' }}
-        mapStyle={activeStyle}
-        mapboxAccessToken={MAPBOX_TOKEN}
+      <MapContainer
+        center={[24.8607, 67.0011]}
+        zoom={12}
         minZoom={3}
+        style={{ width: '100%', height: '100%' }}
+        zoomControl={false}
       >
-        {/* GPS blue dot + re-center button */}
-        <GeolocateControl
-          position="top-right"
-          trackUserLocation
-          showUserHeading
-          showAccuracyCircle={false}
-        />
-        <NavigationControl position="top-right" showCompass={false}/>
+        <MapFixer isActive={isActive}/>
+        <TileLayer url={tileUrl} attribution={tileAttr} keepBuffer={4} updateWhenZooming={false}/>
+
+        {/* GPS blue dot */}
+        {userPos && <Marker position={userPos} icon={BLUE_DOT}/>}
 
         {/* Ground pins */}
         {groundsWithCoords.map(g => (
-          <MapMarker
+          <Marker
             key={g.id}
-            longitude={g.longitude}
-            latitude={g.latitude}
-            anchor="bottom"
-            onClick={e => { e.originalEvent.stopPropagation(); setSelected(g); }}
-          >
-            <div className="map-pin"/>
-          </MapMarker>
+            position={[g.latitude, g.longitude]}
+            icon={GREEN_PIN}
+            eventHandlers={{ click: () => setSelected(g) }}
+          />
         ))}
-      </MapGL>
+      </MapContainer>
+
+      {/* GPS button — top-right corner */}
+      <button
+        onClick={handleGPS}
+        style={{position:'absolute',top:14,right:14,zIndex:999,width:36,height:36,borderRadius:10,background:'rgba(255,255,255,.95)',border:'1px solid rgba(0,0,0,.12)',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',boxShadow:'0 2px 10px rgba(0,0,0,.15)'}}
+      >
+        <Navigation size={16} strokeWidth={2} color="#3B82F6"/>
+      </button>
 
       {/* Satellite toggle — light mode only (or when lsOverride is on) */}
       {(!darkMode || lsOverride) && (
         <button className="map-tile-btn"
+          style={{top:14, right:58}}
           onClick={() => setSatellite(s => !s)}>
           {satellite ? '🗺 Map' : '🛰 Satellite'}
         </button>
@@ -4027,6 +4076,7 @@ export default function Outfield() {
             <MapScreen
               grounds={dbGrounds.length > 0 ? dbGrounds : GROUNDS}
               darkMode={darkMode}
+              isActive={nav === 'map'}
               onBookGround={(g) => { openGround(g); }}
             />
           </div>
