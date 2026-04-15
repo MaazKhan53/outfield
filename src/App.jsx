@@ -2178,12 +2178,6 @@ export default function Outfield() {
     }
   }, [date, court]);
 
-  // Guard: if confirm screen is reached with no valid slot, go back to detail
-  useEffect(() => {
-    if (screen === 'confirm' && (!ground || !curSlot)) {
-      setScreen('detail');
-    }
-  }, [screen, curSlot, ground]);
 
   // Leaderboard — top 10 active players this month
   useEffect(() => {
@@ -2661,6 +2655,13 @@ export default function Outfield() {
   });
 
   const curSlot  = ground && slot !== null ? getSlots(ground, date)[slot] : null;
+
+  // Guard: if confirm screen is reached with no valid slot, bounce back to detail.
+  // Placed here so curSlot is already in scope (avoids temporal dead zone).
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useEffect(() => {
+    if (screen === 'confirm' && ground && !curSlot) setScreen('detail');
+  }, [screen, curSlot, ground]);
 
   const allLfp = GROUNDS.flatMap(g =>
     Object.entries(g.slots).flatMap(([d, slots]) =>
