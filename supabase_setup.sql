@@ -19,8 +19,17 @@ DROP POLICY IF EXISTS "users_select" ON users;
 DROP POLICY IF EXISTS "users_insert" ON users;
 DROP POLICY IF EXISTS "users_update" ON users;
 CREATE POLICY "users_select" ON users FOR SELECT USING (true);
+-- INSERT covers both fresh signup and upsert (ON CONFLICT DO NOTHING) paths
 CREATE POLICY "users_insert" ON users FOR INSERT WITH CHECK (auth.uid() = id);
 CREATE POLICY "users_update" ON users FOR UPDATE USING (auth.uid() = id);
+
+-- Seed a users row for every existing auth user who signed up but has no profile yet.
+-- Safe to run: inserts only if the row is missing. Remove this block after first run if desired.
+INSERT INTO users (id, name, role)
+  SELECT id, email, 'player'
+  FROM auth.users
+  WHERE id NOT IN (SELECT id FROM users)
+ON CONFLICT (id) DO NOTHING;
 
 -- ── 2. GROUNDS ───────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS grounds (

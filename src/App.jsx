@@ -1973,6 +1973,7 @@ export default function Outfield() {
   const [ownerGrounds, setOwnerGrounds]       = useState([]);
   const [ownerBookings, setOwnerBookings]     = useState([]);
   const [ownerDashLoading, setOwnerDashLoading] = useState(false);
+  const [ownerDashRefreshTick, setOwnerDashRefreshTick] = useState(0);
   const [ownerDashTab, setOwnerDashTab]       = useState("grounds");
   const [darkMode, setDarkMode]               = useState(() => localStorage.getItem('otf-dark') === 'true');
   const [autoDarkMode, setAutoDarkMode]       = useState(() => localStorage.getItem('otf-auto-dark') === 'true');
@@ -2060,7 +2061,7 @@ export default function Outfield() {
   const [authError, setAuthError]             = useState("");
   const [authChecked, setAuthChecked]         = useState(false);
   const [authDob, setAuthDob]                 = useState("");
-  const [bookRef]                 = useState("OTF-" + Math.random().toString(36).substring(2,6).toUpperCase());
+  const [bookRef, setBookRef]     = useState("OTF-" + Math.random().toString(36).substring(2,6).toUpperCase());
   const fileRef               = useRef(null);
   const [date, setDate]       = useState(DATES[0]);
   const touchStartX           = useRef(null);
@@ -2150,32 +2151,39 @@ export default function Outfield() {
   useEffect(() => {
     supabase
       .from('grounds')
-      .select('*')
+      .select('*, courts(id, sports, price_base, price_peak, slot_duration_mins, name)')
       .eq('status', 'live')
       .then(({ data }) => {
         if (data && data.length > 0) {
-          const mapped = data.map(g => ({
-            id: g.id,
-            name: g.name,
-            area: g.area,
-            city: g.city,
-            distance: "—",
-            rating: g.rating || 4.5,
-            reviews: 0,
-            priceFrom: 2000,
-            sports: ["cricket","football"],
-            amenities: g.amenities ? g.amenities.split(',') : [],
-            openFrom: g.open_from || "06:00",
-            openTill: g.open_till || "23:00",
-            description: g.description,
-            img: g.img_url,
-            latitude: g.latitude || null,
-            longitude: g.longitude || null,
-            customImage: null,
-            isFacility: false,
-            courts: [],
-            slots: {"default":[]}
-          }));
+          const mapped = data.map(g => {
+            const courts = g.courts || [];
+            const allSports = [...new Set(
+              courts.flatMap(c => (c.sports || '').split(',').map(s => s.trim()).filter(Boolean))
+            )];
+            const prices = courts.map(c => c.price_base).filter(Boolean);
+            return {
+              id: g.id,
+              name: g.name,
+              area: g.area,
+              city: g.city,
+              distance: "—",
+              rating: g.rating || 0,
+              reviews: 0,
+              priceFrom: prices.length > 0 ? Math.min(...prices) : 2000,
+              sports: allSports.length > 0 ? allSports : ["cricket","football"],
+              amenities: g.amenities ? g.amenities.split(',').map(a => a.trim()).filter(Boolean) : [],
+              openFrom: g.open_from || "06:00",
+              openTill: g.open_till || "23:00",
+              description: g.description || "",
+              img: g.img_url,
+              latitude: g.latitude || null,
+              longitude: g.longitude || null,
+              customImage: null,
+              isFacility: false,
+              courts: [],
+              slots: {"default":[]}
+            };
+          });
           setDbGrounds(mapped);
         }
       });
@@ -2191,21 +2199,21 @@ export default function Outfield() {
 
   // Fetch owner dashboard — grounds with nested courts + booking counts
   useEffect(() => {
-    if (screen !== "home" || authUser?.role !== "owner" || !session?.user) return;
+    if (authUser?.role !== "owner" || !session?.user) return;
     setOwnerDashLoading(true);
     supabase
       .from('grounds')
-      .select('*, courts(id, bookings(id, status, total_price, booking_date))')
+      .select('*, courts(id, name, sports, price_base, bookings(id, status, total_price, booking_date))')
       .eq('owner_id', session.user.id)
       .order('created_at', { ascending: false })
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) { console.error('Owner grounds fetch error:', error); setOwnerDashLoading(false); return; }
         const gList = data || [];
         setOwnerGrounds(gList);
-        // Flatten all bookings so header totals still work
         setOwnerBookings(gList.flatMap(g => (g.courts||[]).flatMap(c => c.bookings||[])));
         setOwnerDashLoading(false);
       });
-  }, [screen, authUser, session]);
+  }, [authUser, session, ownerDashRefreshTick]);
 
   // Fetch booking history when profile or bookingHistory screen is active
   useEffect(() => {
@@ -2744,9 +2752,21 @@ export default function Outfield() {
     setBookingCount(p => p + 1);
     if (session?.user && ground.id && typeof ground.id === 'string' && ground.id.includes('-')) {
       const ref = "OTF-" + Math.random().toString(36).substring(2,6).toUpperCase();
+      setBookRef(ref); // keep displayed ref in sync with DB ref
       const timeFrom = curSlot.startTime || curSlot.time?.split("–")[0] || "00:00";
       const timeTo   = curSlot.endTime   || curSlot.time?.split("–")[1] || "02:00";
       const courtId  = court?.id || null;
+
+      // Ensure the user has a public profile row (prevents FK violation for users
+      // who signed up before the users table existed, or if profile insert failed)
+      await supabase.from('users').upsert({
+        id:   session.user.id,
+        name: authUser?.name  || session.user.email?.split('@')[0] || 'Player',
+        role: authUser?.role  || 'player',
+        city: authUser?.city  || null,
+        phone: authUser?.phone || null,
+      }, { onConflict: 'id', ignoreDuplicates: true });
+
       const { error: bkErr } = await supabase.from('bookings').insert({
         court_id:       courtId,
         player_id:      session.user.id,
@@ -2768,15 +2788,14 @@ export default function Outfield() {
       // Mark slot as booked immediately in local state
       setRealSlots(prev => prev.map(s => s.startTime === timeFrom ? {...s, booked: true} : s));
       setBookedSlotKeys(prev => new Set([...prev, `${courtId}_${date}_${timeFrom}`]));
-      // Feature 2: Insert announcement for the owner so they see it in dashboard
-      // Find owner_id from ground data
+      // Notify the owner via announcements
       supabase.from('grounds').select('owner_id, name').eq('id', ground.id).single()
         .then(({ data: gd }) => {
           if (gd?.owner_id) {
             supabase.from('announcements').insert({
               owner_id: gd.owner_id,
               ground_id: ground.id,
-              message: `New booking received for ${gd.name} on ${date} at ${curSlot.time} — ${authUser?.name || 'A player'}`
+              message: `New booking: ${gd.name} · ${date} at ${curSlot.time} — ${authUser?.name || 'A player'} (${authUser?.phone || 'no phone'})`
             });
           }
         });
@@ -2839,11 +2858,12 @@ export default function Outfield() {
     setLfp(false);
     setScreen('detail');
     setRealSlots([]);
-    // For non-facility DB grounds, fetch first court to get pricing/duration
+    // For non-facility DB grounds, fetch first court to get pricing/duration/id
     if (g.id && typeof g.id === 'string' && g.id.includes('-') && !g.isFacility) {
       supabase.from('courts').select('*').eq('ground_id', g.id).limit(1)
         .then(({ data }) => {
           const firstCourt = data?.[0] || null;
+          setCourt(firstCourt); // critical: court_id must be set for bookings
           fetchRealSlots(g, firstCourt, date);
         });
     } else {
@@ -3268,7 +3288,13 @@ export default function Outfield() {
             {/* ── Header ── */}
             <div className="odash-head">
               <div className="odash-head-glow"/>
-              <div className="odash-greeting">Owner Dashboard</div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <div className="odash-greeting">Owner Dashboard</div>
+                <button onClick={()=>setOwnerDashRefreshTick(t=>t+1)}
+                  style={{background:"rgba(255,255,255,.1)",border:"none",borderRadius:8,padding:"6px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:5,color:"rgba(255,255,255,.7)",fontSize:11,fontWeight:600,fontFamily:"Inter,sans-serif"}}>
+                  <RefreshCw size={12} strokeWidth={2} style={ownerDashLoading?{animation:"spin 1s linear infinite"}:{}}/> Refresh
+                </button>
+              </div>
               <div className="odash-title">Your <em>Grounds</em></div>
               <div className="odash-sub">{authUser?.name || "Owner"} · {authUser?.city || "Pakistan"}</div>
               <div className="odash-stats">
@@ -5434,7 +5460,7 @@ export default function Outfield() {
                             open_till:     ownerOpenTill || "23:00",
                             amenities:     ownerAmenities.join(','),
                             contact_phone: ownerPhone.trim() || "",
-                            img_url:       null,
+                            img_url:       uploadedImgUrls[0] || ownerImg || null,
                             rating:        0,
                             status:        "pending",
                             latitude:      ownerLat || 24.8607,
@@ -5468,9 +5494,15 @@ export default function Outfield() {
                             return;
                           }
                           showToast("Submitted! We'll review and go live within 24 hours.");
-                          // Navigate to owner dashboard
-                          setOwnerSection("list");
+                          // Reset form state
+                          setOwnerFacilityName(""); setOwnerArea(""); setOwnerPhone("");
+                          setOwnerDescription(""); setOwnerAmenities([]);
+                          setUploadedImgUrls([]); setOwnerImg(null);
+                          setOwnerCourts([{id:Date.now(),name:"Ground 1",sports:[],type:"",capacity:"",priceBase:"",pricePeak:"",slotDur:"2 hr",notes:"",pricingType:"fixed"}]);
                           setOwnerFormStep("facility");
+                          // Navigate to owner dashboard and force refresh
+                          setOwnerDashRefreshTick(t => t + 1);
+                          setOwnerSection("list");
                           setScreen("home");
                           setNav("home");
                           setTabIndex(0);
