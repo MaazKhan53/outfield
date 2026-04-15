@@ -1894,6 +1894,7 @@ export default function Outfield() {
   const [ownerSubmitSuccess, setOwnerSubmitSuccess] = useState(false);
   const MAX_BOOKINGS = 2;
   const [dbGrounds, setDbGrounds]             = useState([]);
+  const [userGps, setUserGps]                 = useState(null); // [lat, lon] from browser GPS
   const [bookedSlotKeys, setBookedSlotKeys]   = useState(new Set());
   const [session, setSession]                 = useState(null);
   const [authUser, setAuthUser]               = useState(null);
@@ -2029,6 +2030,14 @@ export default function Outfield() {
       });
   }, []);
 
+  // Get user GPS for nearest-grounds carousel
+  useEffect(() => {
+    navigator.geolocation?.getCurrentPosition(
+      p => setUserGps([p.coords.latitude, p.coords.longitude]),
+      () => {} // silently fall back — carousel uses rating sort instead
+    );
+  }, []);
+
   // Fetch owner dashboard — grounds with nested courts + booking counts
   useEffect(() => {
     if (screen !== "home" || authUser?.role !== "owner" || !session?.user) return;
@@ -2123,10 +2132,8 @@ export default function Outfield() {
       .then(({ data }) => { if (data && data[0]) setGroundOfWeek(data[0]); });
   }, []);
 
-  // Sync city filter default when authUser loads
-  useEffect(() => {
-    if (authUser?.city) setFilterCity(authUser.city);
-  }, [authUser]);
+  // City filter stays "all" by default — do not auto-set from user profile
+  // (case-mismatch between profile city and ground city would silently hide all DB grounds)
 
   // fetchRealSlots: generate + overlay bookings/blocks from Supabase
   const fetchRealSlots = async (groundObj, courtObj, selectedDate) => {
@@ -2170,6 +2177,13 @@ export default function Outfield() {
       fetchRealSlots(ground, court, date);
     }
   }, [date, court]);
+
+  // Guard: if confirm screen is reached with no valid slot, go back to detail
+  useEffect(() => {
+    if (screen === 'confirm' && (!ground || !curSlot)) {
+      setScreen('detail');
+    }
+  }, [screen, curSlot, ground]);
 
   // Leaderboard — top 10 active players this month
   useEffect(() => {
@@ -2679,7 +2693,22 @@ export default function Outfield() {
     return g?.slots?.[d] || g?.slots?.['Mar 10'] || [];
   };
 
-  const featGrounds = [...activeGrounds].sort((a,b) => b.rating-a.rating).slice(0,5);
+  // Haversine distance in km between two lat/lon points
+  const haversineKm = (lat1, lon1, lat2, lon2) => {
+    const R = 6371, dLat = (lat2-lat1)*Math.PI/180, dLon = (lon2-lon1)*Math.PI/180;
+    const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  };
+  // "Top Rated Near You" — 10 closest grounds (when GPS available), then top 5 by rating
+  const groundsWithCoords = activeGrounds.filter(g => g.latitude && g.longitude);
+  const featGrounds = (userGps && groundsWithCoords.length >= 3)
+    ? groundsWithCoords
+        .map(g => ({ ...g, _dist: haversineKm(userGps[0], userGps[1], g.latitude, g.longitude) }))
+        .sort((a, b) => a._dist - b._dist)
+        .slice(0, 10)
+        .sort((a, b) => b.rating - a.rating)
+        .slice(0, 5)
+    : [...activeGrounds].sort((a, b) => b.rating - a.rating).slice(0, 5);
 
   /* amenity icon helper */
   const AmenityIcon = ({name}) => {
@@ -3938,11 +3967,12 @@ export default function Outfield() {
             height: 'calc(100dvh - 64px)',
             zIndex: 50,
             visibility: nav === 'map' ? 'visible' : 'hidden',
+            pointerEvents: nav === 'map' ? 'auto' : 'none',
           }}>
             <MapScreen
               grounds={dbGrounds.length > 0 ? dbGrounds : GROUNDS}
               darkMode={darkMode}
-              onBookGround={(g) => { setGround(g); setScreen('ground'); }}
+              onBookGround={(g) => { openGround(g); }}
               isActive={nav === 'map'}
             />
           </div>
@@ -4191,7 +4221,7 @@ export default function Outfield() {
                 {ground.isFacility && !court
                   ? "Select a Ground First"
                   : slot!==null
-                    ? `Book ${getSlots(ground,date)[slot].time}${court?" — "+court.name:""}`
+                    ? `Book ${getSlots(ground,date)[slot]?.time ?? "selected slot"}${court?" — "+court.name:""}`
                     : "Select a Slot to Book"}
               </button>
             </div>
