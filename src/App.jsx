@@ -1327,6 +1327,8 @@ input,select,textarea{font-size:16px !important;}
 .odash-ground-status{font-size:10px;font-weight:700;border-radius:100px;padding:3px 10px;}
 .odash-ground-status.live{background:#DCFCE7;color:#15803D;}
 .odash-ground-status.pending{background:#FEF3C7;color:#D97706;}
+.odash-ground-status.paused{background:#F1F5F9;color:#64748B;}
+.odash-ground-status.rejected{background:#FEF2F2;color:#DC2626;}
 .odash-ground-status.review{background:#DBEAFE;color:#1D4ED8;}
 .odash-booking-card{background:#fff;border-radius:var(--r2);border:1px solid rgba(0,0,0,.05);box-shadow:var(--s1);padding:14px 16px;display:flex;flex-direction:column;gap:8px;}
 .odash-booking-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;}
@@ -2713,6 +2715,7 @@ export default function Outfield() {
 
   // Feature 5 — toggle ground live/paused
   const handleToggleGroundStatus = async (g) => {
+    if (!['live','paused'].includes(g.status)) return; // pending/rejected cannot be self-toggled
     const newStatus = g.status === 'live' ? 'paused' : 'live';
     await supabase.from('grounds').update({ status: newStatus }).eq('id', g.id);
     setOwnerGrounds(prev => prev.map(og => og.id === g.id ? {...og, status: newStatus} : og));
@@ -3371,11 +3374,21 @@ export default function Outfield() {
                           <div style={{fontSize:10,color:"var(--ink4)",fontWeight:600}}>
                             {g.open_from||"—"} – {g.open_till||"—"}
                           </div>
-                          <button
-                            className={`status-toggle ${statusKey === "live" ? "live" : "paused"}`}
-                            onClick={()=>handleToggleGroundStatus(g)}>
-                            {statusKey === "live" ? "⏸ Pause" : "▶ Go Live"}
-                          </button>
+                          {statusKey === "pending" ? (
+                            <div style={{fontSize:10,fontWeight:700,color:"#D97706",background:"#FEF3C7",borderRadius:100,padding:"5px 11px"}}>
+                              ⏳ Awaiting Review
+                            </div>
+                          ) : statusKey === "rejected" ? (
+                            <div style={{fontSize:10,fontWeight:700,color:"#DC2626",background:"#FEF2F2",borderRadius:100,padding:"5px 11px"}}>
+                              ✕ Not Approved
+                            </div>
+                          ) : (
+                            <button
+                              className={`status-toggle ${statusKey === "live" ? "live" : "paused"}`}
+                              onClick={()=>handleToggleGroundStatus(g)}>
+                              {statusKey === "live" ? "⏸ Pause" : "▶ Go Live"}
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
