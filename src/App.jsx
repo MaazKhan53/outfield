@@ -2462,12 +2462,13 @@ export default function Outfield() {
     if (!chatInput.trim() || !activeRoom || !session?.user) return;
     const msg = chatInput.trim();
     setChatInput('');
-    await supabase.from('chat_messages').insert({
+    const { error: msgErr } = await supabase.from('chat_messages').insert({
       room_id: activeRoom.id,
       sender_id: session.user.id,
       sender_name: authUser?.name || 'Player',
       message: msg
     });
+    if (msgErr) showToast("Failed to send message: " + msgErr.message);
   };
 
   const startOrOpenChat = async (matchInfo) => {
@@ -2585,7 +2586,7 @@ export default function Outfield() {
       setAuthLoading(false); return;
     }
     if (data.user) {
-      await supabase.from('users').insert({
+      const { error: profileErr } = await supabase.from('users').insert({
         id: data.user.id,
         name: authName,
         phone: authPhone,
@@ -2594,6 +2595,9 @@ export default function Outfield() {
         dob: authDob,
         age: calcAge(authDob)
       });
+      if (profileErr) {
+        showToast("Account created but profile save failed: " + profileErr.message);
+      }
       setAuthUser({ name: authName, phone: authPhone, role: authRole, city: authCity, dob: authDob, age });
     }
     setAuthLoading(false);
@@ -2659,12 +2663,14 @@ export default function Outfield() {
     if (!session?.user) return;
     const isFaved = favGroundIds.has(groundId);
     if (isFaved) {
-      await supabase.from('favourites').delete().eq('user_id', session.user.id).eq('ground_id', groundId);
+      const { error: delErr } = await supabase.from('favourites').delete().eq('user_id', session.user.id).eq('ground_id', groundId);
+      if (delErr) { showToast("Failed to remove favourite: " + delErr.message); return; }
       setFavGroundIds(prev => { const n = new Set(prev); n.delete(groundId); return n; });
       setFavGrounds(prev => prev.filter(g => g.id !== groundId));
       showToast("Removed from favourites");
     } else {
-      await supabase.from('favourites').insert({ user_id: session.user.id, ground_id: groundId });
+      const { error: favErr } = await supabase.from('favourites').insert({ user_id: session.user.id, ground_id: groundId });
+      if (favErr) { showToast("Failed to save favourite: " + favErr.message); return; }
       setFavGroundIds(prev => new Set([...prev, groundId]));
       showToast("Added to favourites");
     }
@@ -5456,7 +5462,11 @@ export default function Outfield() {
                             pricing_type:       c.pricingType || "fixed"
                           }));
                           const { error: cErr } = await supabase.from('courts').insert(courtRows);
-                          if (cErr) console.error("Courts insert error:", cErr);
+                          if (cErr) {
+                            console.error("Courts insert error:", cErr);
+                            showToast("Ground saved but courts failed to save: " + (cErr.message || "Please contact support."));
+                            return;
+                          }
                           showToast("Submitted! We'll review and go live within 24 hours.");
                           // Navigate to owner dashboard
                           setOwnerSection("list");
@@ -6002,7 +6012,7 @@ export default function Outfield() {
                   const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
                   const [y,m,d] = blockDate.split('-').map(Number);
                   const dateLabel = `${months[m-1]} ${d}`;
-                  await supabase.from('blocked_slots').insert({
+                  const { error: blkErr } = await supabase.from('blocked_slots').insert({
                     owner_id: session?.user?.id,
                     ground_id: blockGroundId || null,
                     date: dateLabel,
@@ -6010,6 +6020,7 @@ export default function Outfield() {
                     end_time: blockTo,
                     reason: blockReason.trim() || null
                   });
+                  if (blkErr) { showToast("Failed to block slot: " + blkErr.message); return; }
                   setBlockedSlots(p=>[...p,{date:dateLabel,from:blockFrom,to:blockTo,reason:blockReason}]);
                   setShowBlockSheet(false);
                   setBlockReason("");
@@ -6183,7 +6194,7 @@ export default function Outfield() {
                   style={{width:"100%",padding:"14px 0",borderRadius:14,background: feedbackMessage.trim() ? "var(--green)" : "var(--border)",color: feedbackMessage.trim() ? "#fff" : "var(--ink4)",fontWeight:700,fontSize:15,border:"none",cursor: feedbackMessage.trim() ? "pointer" : "not-allowed",marginTop:12,transition:"all .15s"}}
                   disabled={!feedbackMessage.trim()}
                   onClick={async()=>{
-                    await supabase.from('feedback').insert({
+                    const { error: fbErr } = await supabase.from('feedback').insert({
                       user_id: session?.user?.id || null,
                       user_name: authUser?.name || 'Anonymous',
                       user_email: session?.user?.email || null,
@@ -6192,6 +6203,7 @@ export default function Outfield() {
                       screen: feedbackScreen || null,
                       created_at: new Date().toISOString()
                     });
+                    if (fbErr) { showToast("Failed to send feedback: " + fbErr.message); return; }
                     setShowFeedback(false);
                     setFeedbackStep(1);setFeedbackType('');setFeedbackMessage('');setFeedbackScreen('');
                     showToast("Thanks for your feedback! We read every single one.");
