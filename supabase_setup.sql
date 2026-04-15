@@ -1,7 +1,10 @@
 -- ═══════════════════════════════════════════════════════════════════════
 -- OUTFIELD — COMPLETE DATABASE SETUP
--- Run once in Supabase SQL Editor. Safe to re-run (IF NOT EXISTS).
+-- Paste the entire file into Supabase SQL Editor and click Run.
+-- Safe to re-run on an existing database — nothing is dropped except
+-- old RLS policies which are immediately recreated below.
 -- ═══════════════════════════════════════════════════════════════════════
+
 
 -- ── 1. USERS ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS users (
@@ -19,17 +22,17 @@ DROP POLICY IF EXISTS "users_select" ON users;
 DROP POLICY IF EXISTS "users_insert" ON users;
 DROP POLICY IF EXISTS "users_update" ON users;
 CREATE POLICY "users_select" ON users FOR SELECT USING (true);
--- INSERT covers both fresh signup and upsert (ON CONFLICT DO NOTHING) paths
 CREATE POLICY "users_insert" ON users FOR INSERT WITH CHECK (auth.uid() = id);
 CREATE POLICY "users_update" ON users FOR UPDATE USING (auth.uid() = id);
 
--- Seed a users row for every existing auth user who signed up but has no profile yet.
--- Safe to run: inserts only if the row is missing. Remove this block after first run if desired.
+-- Create a profile row for any auth user who signed up before this table existed.
+-- Runs safely on every re-run — inserts only missing rows.
 INSERT INTO users (id, name, role)
   SELECT id, email, 'player'
   FROM auth.users
   WHERE id NOT IN (SELECT id FROM users)
 ON CONFLICT (id) DO NOTHING;
+
 
 -- ── 2. GROUNDS ───────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS grounds (
@@ -54,9 +57,12 @@ ALTER TABLE grounds ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "grounds_select" ON grounds;
 DROP POLICY IF EXISTS "grounds_insert" ON grounds;
 DROP POLICY IF EXISTS "grounds_update" ON grounds;
+-- Owners always see their own grounds regardless of status.
+-- Players only see live grounds.
 CREATE POLICY "grounds_select" ON grounds FOR SELECT USING (status = 'live' OR auth.uid() = owner_id);
 CREATE POLICY "grounds_insert" ON grounds FOR INSERT WITH CHECK (auth.uid() = owner_id);
 CREATE POLICY "grounds_update" ON grounds FOR UPDATE USING (auth.uid() = owner_id);
+
 
 -- ── 3. COURTS ────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS courts (
@@ -77,16 +83,19 @@ ALTER TABLE courts ADD COLUMN IF NOT EXISTS pricing_type text DEFAULT 'fixed';
 ALTER TABLE courts ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "courts_select" ON courts;
 DROP POLICY IF EXISTS "courts_owner"  ON courts;
+-- Everyone can read courts (needed for slot generation and ground detail screen).
 CREATE POLICY "courts_select" ON courts FOR SELECT USING (true);
-CREATE POLICY "courts_owner"  ON courts FOR ALL USING (
+-- Owners can insert / update / delete their own courts.
+CREATE POLICY "courts_owner" ON courts FOR ALL USING (
   EXISTS (SELECT 1 FROM grounds g WHERE g.id = courts.ground_id AND g.owner_id = auth.uid())
 );
+
 
 -- ── 4. BOOKINGS ──────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS bookings (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   court_id       uuid REFERENCES courts(id) ON DELETE SET NULL,
-  player_id      uuid REFERENCES users(id) ON DELETE CASCADE,
+  player_id      uuid REFERENCES users(id)  ON DELETE CASCADE,
   booking_date   text NOT NULL,
   start_time     text NOT NULL,
   end_time       text NOT NULL,
@@ -106,7 +115,8 @@ DROP POLICY IF EXISTS "bookings_owner_select"  ON bookings;
 CREATE POLICY "bookings_player_insert" ON bookings FOR INSERT WITH CHECK (auth.uid() = player_id);
 CREATE POLICY "bookings_player_select" ON bookings FOR SELECT USING (auth.uid() = player_id);
 CREATE POLICY "bookings_player_update" ON bookings FOR UPDATE USING (auth.uid() = player_id);
-CREATE POLICY "bookings_owner_select"  ON bookings FOR SELECT USING (
+-- Owners can read all bookings for their courts (for the Register tab).
+CREATE POLICY "bookings_owner_select" ON bookings FOR SELECT USING (
   EXISTS (
     SELECT 1 FROM courts c
     JOIN grounds g ON g.id = c.ground_id
@@ -114,8 +124,8 @@ CREATE POLICY "bookings_owner_select"  ON bookings FOR SELECT USING (
   )
 );
 
+
 -- ── 5. REVIEWS ───────────────────────────────────────────────────────
--- This table was missing from the schema but is used by the ratings modal.
 CREATE TABLE IF NOT EXISTS reviews (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   ground_id  uuid REFERENCES grounds(id) ON DELETE CASCADE,
@@ -130,6 +140,7 @@ DROP POLICY IF EXISTS "reviews_select" ON reviews;
 DROP POLICY IF EXISTS "reviews_insert" ON reviews;
 CREATE POLICY "reviews_select" ON reviews FOR SELECT USING (true);
 CREATE POLICY "reviews_insert" ON reviews FOR INSERT WITH CHECK (auth.uid() = player_id);
+
 
 -- ── 6. FAVOURITES ────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS favourites (
@@ -147,6 +158,7 @@ CREATE POLICY "favourites_select" ON favourites FOR SELECT USING (auth.uid() = u
 CREATE POLICY "favourites_insert" ON favourites FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "favourites_delete" ON favourites FOR DELETE USING (auth.uid() = user_id);
 
+
 -- ── 7. ANNOUNCEMENTS ─────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS announcements (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -159,16 +171,19 @@ ALTER TABLE announcements ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "announcements_select" ON announcements;
 DROP POLICY IF EXISTS "announcements_insert" ON announcements;
 DROP POLICY IF EXISTS "announcements_delete" ON announcements;
+-- Only the owner sees their own announcements.
 CREATE POLICY "announcements_select" ON announcements FOR SELECT USING (auth.uid() = owner_id);
-CREATE POLICY "announcements_insert" ON announcements FOR INSERT WITH CHECK (auth.uid() = owner_id OR true);
+-- Any logged-in user can insert (players trigger booking notifications to owners).
+CREATE POLICY "announcements_insert" ON announcements FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
 CREATE POLICY "announcements_delete" ON announcements FOR DELETE USING (auth.uid() = owner_id);
+
 
 -- ── 8. BLOCKED SLOTS ─────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS blocked_slots (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  court_id   uuid REFERENCES courts(id) ON DELETE CASCADE,
-  ground_id  uuid REFERENCES grounds(id) ON DELETE CASCADE,
-  owner_id   uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  court_id   uuid REFERENCES courts(id)      ON DELETE CASCADE,
+  ground_id  uuid REFERENCES grounds(id)     ON DELETE CASCADE,
+  owner_id   uuid REFERENCES auth.users(id)  ON DELETE CASCADE,
   date       text,
   start_time text,
   end_time   text,
@@ -179,9 +194,11 @@ ALTER TABLE blocked_slots ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "blocked_slots_select" ON blocked_slots;
 DROP POLICY IF EXISTS "blocked_slots_insert" ON blocked_slots;
 DROP POLICY IF EXISTS "blocked_slots_delete" ON blocked_slots;
+-- Everyone can read blocked slots (needed so players see unavailable slots).
 CREATE POLICY "blocked_slots_select" ON blocked_slots FOR SELECT USING (true);
 CREATE POLICY "blocked_slots_insert" ON blocked_slots FOR INSERT WITH CHECK (auth.uid() = owner_id);
 CREATE POLICY "blocked_slots_delete" ON blocked_slots FOR DELETE USING (auth.uid() = owner_id);
+
 
 -- ── 9. FEEDBACK ──────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS feedback (
@@ -197,12 +214,12 @@ CREATE TABLE IF NOT EXISTS feedback (
 ALTER TABLE feedback ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "feedback_insert" ON feedback;
 DROP POLICY IF EXISTS "feedback_select" ON feedback;
+-- Anyone (including anonymous users) can submit feedback.
 CREATE POLICY "feedback_insert" ON feedback FOR INSERT WITH CHECK (true);
 CREATE POLICY "feedback_select" ON feedback FOR SELECT USING (true);
 
+
 -- ── 10. CHAT ROOMS ───────────────────────────────────────────────────
-DROP TABLE IF EXISTS chat_messages CASCADE;
-DROP TABLE IF EXISTS chat_rooms CASCADE;
 CREATE TABLE IF NOT EXISTS chat_rooms (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   host_id          uuid REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -222,6 +239,7 @@ DROP POLICY IF EXISTS "Participants read rooms"   ON chat_rooms;
 DROP POLICY IF EXISTS "Participants insert rooms" ON chat_rooms;
 CREATE POLICY "Participants read rooms"   ON chat_rooms FOR SELECT USING (auth.uid() = host_id OR auth.uid() = requester_id);
 CREATE POLICY "Participants insert rooms" ON chat_rooms FOR INSERT WITH CHECK (auth.uid() = requester_id);
+
 
 -- ── 11. CHAT MESSAGES ────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS chat_messages (
@@ -250,6 +268,28 @@ CREATE POLICY "Participants send messages" ON chat_messages FOR INSERT WITH CHEC
   )
 );
 CREATE INDEX IF NOT EXISTS chat_messages_created_at_idx ON chat_messages(created_at);
+
+
+-- ── 12. STORAGE BUCKET FOR GROUND PHOTOS ─────────────────────────────
+-- Creates the bucket used by the owner listing form photo upload.
+-- If it already exists this is a no-op.
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('ground-images', 'ground-images', true)
+ON CONFLICT (id) DO NOTHING;
+
+DROP POLICY IF EXISTS "ground_images_select" ON storage.objects;
+DROP POLICY IF EXISTS "ground_images_insert" ON storage.objects;
+DROP POLICY IF EXISTS "ground_images_delete" ON storage.objects;
+
+CREATE POLICY "ground_images_select" ON storage.objects
+  FOR SELECT USING (bucket_id = 'ground-images');
+
+CREATE POLICY "ground_images_insert" ON storage.objects
+  FOR INSERT WITH CHECK (bucket_id = 'ground-images' AND auth.uid() IS NOT NULL);
+
+CREATE POLICY "ground_images_delete" ON storage.objects
+  FOR DELETE USING (bucket_id = 'ground-images' AND auth.uid() IS NOT NULL);
+
 
 -- ═══════════════════════════════════════════════════════════════════════
 -- END OF SETUP SCRIPT
