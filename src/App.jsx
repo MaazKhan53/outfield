@@ -1883,7 +1883,8 @@ function MapScreen({ grounds, darkMode, isActive, onBookGround, ownerId }) {
 
       {/* Load Shedding Easter Egg pill */}
       {lsPillVisible && (
-        <button className={lsPillClass} onClick={handleLsPillTap}>
+        <button className={lsPillClass} onClick={handleLsPillTap}
+          style={ownerId && lsPillState === 'resting' ? {top:60} : undefined}>
           {lsOverride
             ? <>✨ Bijli Aa Gai</>
             : <><span className="ls-candle">🕯️</span> Load Shedding Map</>}
