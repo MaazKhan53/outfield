@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS courts (
   ground_id          uuid REFERENCES grounds(id) ON DELETE CASCADE,
   name               text NOT NULL,
   sports             text,
-  surface_type       text,
+  surface            text,
   capacity           int DEFAULT 22,
   price_base         numeric DEFAULT 2000,
   price_peak         numeric DEFAULT 2500,
@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS bookings (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   court_id       uuid REFERENCES courts(id) ON DELETE SET NULL,
   player_id      uuid REFERENCES users(id)  ON DELETE CASCADE,
-  booking_date   text NOT NULL,
+  booking_date   text NOT NULL,  -- stored as "Mon D" label (e.g. "Apr 20")
   start_time     text NOT NULL,
   end_time       text NOT NULL,
   total_price    numeric DEFAULT 0,

@@ -2215,6 +2215,26 @@ export default function Outfield() {
       });
   }, [authUser, session, ownerDashRefreshTick]);
 
+  // Real-time: owner dashboard refreshes when any new booking lands on their courts
+  useEffect(() => {
+    if (authUser?.role !== 'owner' || !session?.user) return;
+    const channel = supabase
+      .channel(`owner-bookings-${session.user.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'bookings' },
+        (payload) => {
+          const b = payload.new;
+          // Only refresh if this booking belongs to one of this owner's courts
+          const ownerCourtIds = new Set(
+            (ownerGrounds || []).flatMap(g => (g.courts || []).map(c => c.id))
+          );
+          if (ownerCourtIds.has(b.court_id)) {
+            setOwnerBookings(prev => [...prev, b]);
+          }
+        })
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [authUser?.role, session?.user?.id, ownerGrounds]);
+
   // Fetch booking history when profile or bookingHistory screen is active
   useEffect(() => {
     if (!["profile","bookingHistory"].includes(screen) || !session?.user) return;
@@ -2337,6 +2357,22 @@ export default function Outfield() {
     }
   }, [date, court]);
 
+  // Real-time: mark slots as booked as soon as another player confirms a booking
+  useEffect(() => {
+    const courtId = court?.id;
+    if (!courtId || !courtId.includes('-')) return;
+    const channel = supabase
+      .channel(`slots-${courtId}-${date}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'bookings', filter: `court_id=eq.${courtId}` },
+        (payload) => {
+          const b = payload.new;
+          if (b.booking_date === date && b.status === 'confirmed') {
+            setRealSlots(prev => prev.map(s => s.startTime === b.start_time ? { ...s, booked: true } : s));
+          }
+        })
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [court?.id, date]);
 
   // Leaderboard — top 10 active players this month
   useEffect(() => {
@@ -4400,7 +4436,7 @@ export default function Outfield() {
                       <div key={i}
                         className={`slot-card ${isBlocked?"bkd":isLfp?"lfp":isBooked?"bkd":"free"} ${slot===i?"sel":""}`}
                         style={!clickable?{cursor:"not-allowed"}:{}}
-                        onClick={()=>{ if(clickable) setSlot(slot===i?null:i); }}>
+                        onClick={()=>{ if(clickable) { setSlot(i); setScreen('confirm'); } }}>
                         <div className="slot-time">{s.time}</div>
                         <div className="slot-status" style={{color:isBlocked?"#9CA3AF":isLfp?"var(--orange)":isBooked?"var(--ink4)":"var(--green)"}}>
                           {isBlocked ? (
@@ -5479,7 +5515,7 @@ export default function Outfield() {
                             ground_id:          groundData.id,
                             name:               c.name.trim() || "Ground",
                             sports:             c.sports.join(','),
-                            surface_type:       c.type || "Outdoor",
+                            surface:            c.type || "Outdoor",
                             capacity:           parseInt(c.capacity) || null,
                             price_base:         parseInt(c.priceBase) || 0,
                             price_peak:         parseInt(c.pricePeak) || parseInt(c.priceBase) || 0,
