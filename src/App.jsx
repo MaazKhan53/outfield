@@ -2045,6 +2045,7 @@ export default function Outfield() {
   // Onboarding role restriction message
   const [obRoleMsg, setObRoleMsg] = useState(null); // null | 'player-listing' | 'owner-booking'
   const MAX_BOOKINGS = 2;
+  const [dbLfpPosts, setDbLfpPosts]           = useState([]);
   const [dbGrounds, setDbGrounds]             = useState([]);
   const [userGps, setUserGps]                 = useState(null); // [lat, lon] from browser GPS
   const [bookedSlotKeys, setBookedSlotKeys]   = useState(new Set());
@@ -2127,7 +2128,16 @@ export default function Outfield() {
       setSession(session);
       if (session?.user) {
         supabase.from('users').select('*').eq('id', session.user.id).single()
-          .then(({ data }) => { if (data) setAuthUser(data); });
+          .then(({ data }) => {
+            if (data) {
+              setAuthUser(data);
+              // Auto-route returning users directly to home after splash
+              setTimeout(() => {
+                setScreen('home');
+                setNav('home');
+              }, 2200);
+            }
+          });
       }
       setAuthChecked(true);
     });
@@ -2151,16 +2161,35 @@ export default function Outfield() {
   useEffect(() => {
     supabase
       .from('grounds')
-      .select('*, courts(id, sports, price_base, price_peak, slot_duration_mins, name)')
+      .select('*, courts(id, name, sports, surface, capacity, price_base, price_peak, slot_duration_mins, notes, pricing_type)')
       .eq('status', 'live')
       .then(({ data }) => {
         if (data && data.length > 0) {
           const mapped = data.map(g => {
-            const courts = g.courts || [];
+            const rawCourts = g.courts || [];
             const allSports = [...new Set(
-              courts.flatMap(c => (c.sports || '').split(',').map(s => s.trim()).filter(Boolean))
+              rawCourts.flatMap(c => (c.sports || '').split(',').map(s => s.trim()).filter(Boolean))
             )];
-            const prices = courts.map(c => c.price_base).filter(Boolean);
+            const prices = rawCourts.map(c => c.price_base).filter(Boolean);
+            // Normalise each court so both camelCase and snake_case fields are available
+            const mappedCourts = rawCourts.map(c => {
+              const sportsArr = (c.sports || '').split(',').map(s => s.trim()).filter(Boolean);
+              const pb = c.price_base || 2000;
+              const pp = c.price_peak || pb;
+              return {
+                id: c.id,
+                name: c.name || 'Court',
+                sports: sportsArr.length ? sportsArr : ['cricket'],
+                surface: c.surface || 'Outdoor',
+                capacity: c.capacity || 22,
+                priceBase: pb,
+                pricePeak: pp,
+                price_base: pb,
+                price_peak: pp,
+                slot_duration_mins: c.slot_duration_mins || 120,
+                notes: c.notes || '',
+              };
+            });
             return {
               id: g.id,
               name: g.name,
@@ -2179,8 +2208,8 @@ export default function Outfield() {
               latitude: g.latitude || null,
               longitude: g.longitude || null,
               customImage: null,
-              isFacility: false,
-              courts: [],
+              isFacility: mappedCourts.length > 1,
+              courts: mappedCourts,
               slots: {"default":[]}
             };
           });
@@ -2350,12 +2379,12 @@ export default function Outfield() {
     setSlotsLoading(false);
   };
 
-  // Re-fetch whenever date or court changes while on the detail screen
+  // Re-fetch whenever date changes while on the detail screen
   useEffect(() => {
     if (screen === 'detail' && ground) {
       fetchRealSlots(ground, court, date);
     }
-  }, [date, court]);
+  }, [date]); // court changes handled directly in openGround + court picker onClick
 
   // Real-time: mark slots as booked as soon as another player confirms a booking
   useEffect(() => {
@@ -2410,6 +2439,45 @@ export default function Outfield() {
   useEffect(() => {
     if (screen === 'match' && session?.user) fetchChatRooms();
   }, [screen, session]);
+
+  // Fetch real LFP (Looking For Players) bookings for matchmaking tab
+  useEffect(() => {
+    if (nav !== 'match') return;
+    supabase
+      .from('bookings')
+      .select('id, booking_date, start_time, end_time, player_id, lfp_on, court_id, courts(name, sports, grounds(id, name, area))')
+      .eq('lfp_on', true)
+      .eq('status', 'confirmed')
+      .order('booking_date', { ascending: true })
+      .then(({ data }) => {
+        if (!data) return;
+        const now = new Date(); now.setHours(0,0,0,0);
+        const months = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+        const mapped = data.filter(b => {
+          // Keep only future/today bookings
+          const parts = (b.booking_date||'').split(' ');
+          if (parts.length < 2) return false;
+          const d = new Date(new Date().getFullYear(), months[parts[0]]??0, parseInt(parts[1])||1);
+          d.setHours(0,0,0,0);
+          return d >= now;
+        }).map(b => ({
+          time: `${b.start_time}–${b.end_time}`,
+          startTime: b.start_time,
+          endTime: b.end_time,
+          lfp: true,
+          booked: true,
+          groundId: b.courts?.grounds?.id,
+          groundName: b.courts?.grounds?.name || '—',
+          groundArea: b.courts?.grounds?.area || '—',
+          dateLabel: b.booking_date,
+          sport: (b.courts?.sports||'cricket').split(',')[0].trim(),
+          bookingId: b.id,
+          playerId: b.player_id,
+          need: 10, joined: 0, style: 'casual', position: 'Any',
+        }));
+        setDbLfpPosts(mapped);
+      });
+  }, [nav]);
 
   // Announcements — load for owner
   useEffect(() => {
@@ -2705,6 +2773,11 @@ export default function Outfield() {
   */
   const handleToggleFav = async (groundId) => {
     if (!session?.user) return;
+    // Only real DB grounds (UUIDs) can be favourited
+    if (!groundId || typeof groundId !== 'string' || !groundId.includes('-')) {
+      showToast("Sign in required or ground not yet live");
+      return;
+    }
     const isFaved = favGroundIds.has(groundId);
     if (isFaved) {
       const { error: delErr } = await supabase.from('favourites').delete().eq('user_id', session.user.id).eq('ground_id', groundId);
@@ -2822,8 +2895,20 @@ export default function Outfield() {
         return;
       }
       // Mark slot as booked immediately in local state
-      setRealSlots(prev => prev.map(s => s.startTime === timeFrom ? {...s, booked: true} : s));
+      setRealSlots(prev => prev.map(s => s.startTime === timeFrom ? {...s, booked: true, lfp} : s));
       setBookedSlotKeys(prev => new Set([...prev, `${courtId}_${date}_${timeFrom}`]));
+      // If LFP is on, create a matchmaking post
+      if (lfp && courtId) {
+        supabase.from('matchmaking').insert({
+          booking_id: null, // FK not set to avoid complications
+          host_id: session.user.id,
+          sport: (court?.sports?.[0] || (court?.sports||'').split(',')[0] || 'cricket').trim(),
+          players_needed: (court?.capacity || 10) - 1,
+          players_joined: 0,
+          style: 'casual',
+          status: 'open',
+        }).then(({error}) => { if(error) console.warn('matchmaking insert:', error.message); });
+      }
       // Notify the owner via announcements
       supabase.from('grounds').select('owner_id, name').eq('id', ground.id).single()
         .then(({ data: gd }) => {
@@ -2887,28 +2972,51 @@ export default function Outfield() {
     if (screen === 'confirm' && ground && !curSlot) setScreen('detail');
   }, [screen, curSlot, ground]);
 
-  const allLfp = GROUNDS.flatMap(g =>
+  const staticLfp = GROUNDS.flatMap(g =>
     Object.entries(g.slots).flatMap(([d, slots]) =>
       slots.filter(s => s.lfp).map(s => ({ ...s, groundName:g.name, groundArea:g.area, dateLabel:d, groundId:g.id }))
     )
   );
+  // Merge DB LFP posts with static demo data; DB posts take precedence when available
+  const allLfp = dbLfpPosts.length > 0 ? dbLfpPosts : staticLfp;
 
   const openGround = (g) => {
     setGround(g);
-    setCourt(null);
     setSlot(null);
     setLfp(false);
     setScreen('detail');
     setRealSlots([]);
-    // For non-facility DB grounds, fetch first court to get pricing/duration/id
-    if (g.id && typeof g.id === 'string' && g.id.includes('-') && !g.isFacility) {
-      supabase.from('courts').select('*').eq('ground_id', g.id).limit(1)
-        .then(({ data }) => {
-          const firstCourt = data?.[0] || null;
-          setCourt(firstCourt); // critical: court_id must be set for bookings
-          fetchRealSlots(g, firstCourt, date);
-        });
+    setSlotsLoading(true); // show skeleton immediately before any async work
+
+    if (g.id && typeof g.id === 'string' && g.id.includes('-')) {
+      // DB ground — use courts already mapped into the ground object
+      const groundCourts = g.courts || [];
+      if (groundCourts.length > 0) {
+        const firstCourt = groundCourts[0];
+        setCourt(firstCourt);
+        fetchRealSlots(g, firstCourt, date);
+      } else {
+        // No courts in mapped data — fall back to a DB fetch
+        setCourt(null);
+        supabase.from('courts')
+          .select('id, name, sports, surface, capacity, price_base, price_peak, slot_duration_mins, notes, pricing_type')
+          .eq('ground_id', g.id)
+          .order('name', { ascending: true })
+          .then(({ data }) => {
+            const courts = (data || []).map(c => {
+              const sportsArr = (c.sports || '').split(',').map(s => s.trim()).filter(Boolean);
+              const pb = c.price_base || 2000;
+              const pp = c.price_peak || pb;
+              return { ...c, sports: sportsArr, priceBase: pb, pricePeak: pp, price_base: pb, price_peak: pp };
+            });
+            const firstCourt = courts[0] || null;
+            setCourt(firstCourt);
+            fetchRealSlots(g, firstCourt, date);
+          });
+      }
     } else {
+      // Static demo ground
+      setCourt(null);
       fetchRealSlots(g, null, date);
     }
   };
@@ -4337,32 +4445,35 @@ export default function Outfield() {
                     </div>
                     <div className="court-pick-cards">
                       {ground.courts.map(c=>{
-                        const sp = sportObj(c.sports[0]);
+                        const sportsArr = Array.isArray(c.sports) ? c.sports : (c.sports||'').split(',').map(s=>s.trim()).filter(Boolean);
+                        const sp = sportObj(sportsArr[0] || 'cricket');
+                        const pb = c.priceBase || c.price_base || 2000;
                         const freeSlots = (c.slots?.["Mar 10"]||[]).filter(s=>!s.booked).length;
+                        const normC = {...c, sports: sportsArr, priceBase: pb, price_base: pb};
                         return (
                           <div key={c.id} className={`court-pick-card ${court?.id===c.id?"sel":""}`}
-                            onClick={()=>{setCourt(c);setSlot(null);fetchRealSlots(ground,c,date);}}>
+                            onClick={()=>{setCourt(normC);setSlot(null);fetchRealSlots(ground,normC,date);}}>
                             <div className="court-pick-ico" style={{background:`${sp.bg}25`}}>
-                              <NeonSportIcon id={c.sports[0]} color={sp.neon} size={22}/>
+                              <NeonSportIcon id={sportsArr[0]||'cricket'} color={sp.neon} size={22}/>
                             </div>
                             <div style={{flex:1}}>
                               <div className="court-pick-name">{c.name}</div>
                               <div className="court-pick-meta">
-                                <div className="court-pick-tag"><Activity size={9} strokeWidth={2}/>{c.surface}</div>
-                                <div className="court-pick-tag"><Users size={9} strokeWidth={2}/>{c.capacity} players</div>
-                                <div className="court-pick-tag" style={{color:freeSlots>0?"var(--green-d)":"var(--ink4)"}}>
-                                  <CheckCircle size={9} strokeWidth={2}/>{freeSlots} free today
+                                <div className="court-pick-tag"><Activity size={9} strokeWidth={2}/>{c.surface||'Outdoor'}</div>
+                                <div className="court-pick-tag"><Users size={9} strokeWidth={2}/>{c.capacity||22} players</div>
+                                <div className="court-pick-tag" style={{color:"var(--ink4)"}}>
+                                  <CheckCircle size={9} strokeWidth={2}/>Select to check
                                 </div>
                               </div>
                               <div style={{display:"flex",gap:5,marginTop:5,flexWrap:"wrap"}}>
-                                {c.sports.map(sid=>{
+                                {sportsArr.map(sid=>{
                                   const s2=sportObj(sid);
                                   return <span key={sid} style={{fontSize:9,fontWeight:700,background:`${s2.bg}15`,color:s2.fg,border:`1px solid ${s2.bg}30`,borderRadius:100,padding:"2px 7px",display:"flex",alignItems:"center",gap:3}}><NeonSportIcon id={sid} color={s2.neon} size={10}/>{s2.label}</span>;
                                 })}
                               </div>
                             </div>
                             <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
-                              <div className="court-pick-price">Rs {c.priceBase.toLocaleString()}</div>
+                              <div className="court-pick-price">Rs {pb.toLocaleString()}</div>
                               <ChevronRight size={15} color={court?.id===c.id?"var(--green-d)":"var(--ink4)"} strokeWidth={2.5}/>
                             </div>
                           </div>
@@ -4401,7 +4512,7 @@ export default function Outfield() {
                       <CheckCircle size={13} color="var(--green-d)" strokeWidth={2.5}/>
                       <div style={{fontSize:12,fontWeight:700,color:"var(--green-d)"}}>Booking: {court.name}</div>
                       <div style={{marginLeft:"auto",fontSize:10,color:"var(--green-d)",cursor:"pointer",fontWeight:600}}
-                        onClick={()=>{setCourt(null);setSlot(null);}}>Change</div>
+                        onClick={()=>{setCourt(null);setSlot(null);setRealSlots([]);setSlotsLoading(false);}}>Change</div>
                     </div>
                   )}
                 <div className="slot-legend">
@@ -5587,19 +5698,49 @@ export default function Outfield() {
                 <div style={{fontSize:11,fontWeight:800,color:"var(--ink3)",textTransform:"uppercase",letterSpacing:"1px",margin:"16px 0 10px"}}>Block a New Slot</div>
 
                 <div className="form-block" style={{marginBottom:10}}>
+                  {ownerGrounds.length > 1 && (
+                    <div className="fg" style={{marginBottom:8}}>
+                      <label className="flbl">Ground</label>
+                      <select className="finput" style={{cursor:"pointer"}}
+                        value={blockGroundId}
+                        onChange={e=>setBlockGroundId(e.target.value)}>
+                        <option value="">Select a ground</option>
+                        {ownerGrounds.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}
+                      </select>
+                    </div>
+                  )}
                   <div className="fg"><label className="flbl">Date</label>
-                    <input className="finput" type="date"/>
+                    <input className="finput" type="date" value={blockDate} onChange={e=>setBlockDate(e.target.value)}/>
                   </div>
                   <div className="time-pair">
-                    <div className="fg"><label className="flbl">From</label><input className="finput" type="time" defaultValue="12:00"/></div>
-                    <div className="fg"><label className="flbl">To</label><input className="finput" type="time" defaultValue="14:00"/></div>
+                    <div className="fg"><label className="flbl">From</label><input className="finput" type="time" value={blockFrom} onChange={e=>setBlockFrom(e.target.value)}/></div>
+                    <div className="fg"><label className="flbl">To</label><input className="finput" type="time" value={blockTo} onChange={e=>setBlockTo(e.target.value)}/></div>
                   </div>
                   <div className="fg"><label className="flbl">Reason (optional)</label>
-                    <input className="finput" placeholder="e.g. Maintenance, Private event..."/>
+                    <input className="finput" placeholder="e.g. Maintenance, Private event..." value={blockReason} onChange={e=>setBlockReason(e.target.value)}/>
                   </div>
                   <button className="block-add-btn" style={{width:"100%",justifyContent:"center",marginTop:4,borderRadius:12,padding:"12px"}}
-                    onClick={()=>{
-                      setBlockedSlots(p=>[...p,{date:"Mar 12",from:"12:00",to:"14:00",reason:"Maintenance"}]);
+                    onClick={async()=>{
+                      if (!blockDate) { showToast("Please select a date"); return; }
+                      const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+                      const [y,m,d] = blockDate.split('-').map(Number);
+                      const dateLabel = `${months[m-1]} ${d}`;
+                      const gid = blockGroundId || ownerGrounds[0]?.id || null;
+                      // Find a court_id from the selected ground for slot matching
+                      const gCourts = ownerGrounds.find(g=>g.id===gid)?.courts || [];
+                      const courtIdForBlock = gCourts[0]?.id || null;
+                      const { error: blkErr } = await supabase.from('blocked_slots').insert({
+                        owner_id: session?.user?.id,
+                        ground_id: gid,
+                        court_id: courtIdForBlock,
+                        date: dateLabel,
+                        start_time: blockFrom,
+                        end_time: blockTo,
+                        reason: blockReason.trim() || null
+                      });
+                      if (blkErr) { showToast("Failed: " + blkErr.message); return; }
+                      setBlockedSlots(p=>[...p,{date:dateLabel,from:blockFrom,to:blockTo,reason:blockReason}]);
+                      setBlockReason("");
                       showToast("Slot blocked successfully");
                     }}>
                     <X size={13} strokeWidth={2.5}/> Block This Slot
@@ -6122,7 +6263,13 @@ export default function Outfield() {
               ) : (
                 <div className="glist">
                   {favGrounds.map(g => (
-                    <div key={g.id} className="gcard" onClick={()=>{setShowFavScreen(false);openGround({...g,sports:["cricket","football"],amenities:[],priceFrom:2000,distance:"—",openFrom:"06:00",openTill:"23:00",isFacility:false,courts:[],slots:{"default":[]}});}}>
+                    <div key={g.id} className="gcard" onClick={()=>{
+                      setShowFavScreen(false);
+                      // Look up from dbGrounds first for full data, otherwise build a minimal object
+                      const full = dbGrounds.find(dg=>dg.id===g.id) || activeGrounds.find(dg=>dg.id===g.id);
+                      if (full) { openGround(full); }
+                      else { openGround({...g, sports:["cricket","football"], amenities:[], priceFrom:g.rating||2000, distance:"—", openFrom:"06:00", openTill:"23:00", isFacility:false, courts:[], slots:{"default":[]}}); }
+                    }}>
                       <div className="gcard-img-wrap">
                         {g.img_url
                           ? <img className="gcard-img" src={g.img_url} alt={g.name} onError={e=>{e.target.style.display="none";}}/>
