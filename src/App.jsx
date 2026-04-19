@@ -2836,10 +2836,16 @@ export default function Outfield() {
     return ms && mq && mc && mt;
   });
 
+  const activeCourt = ground?.isFacility ? court : null;
+  const getSlots = (g, d) => {
+    if (realSlots.length > 0) return realSlots;
+    if (g?.isFacility && court) return court.slots?.[d] || court.slots?.['Mar 10'] || [];
+    return g?.slots?.[d] || g?.slots?.['Mar 10'] || [];
+  };
+
   const curSlot  = ground && slot !== null ? getSlots(ground, date)[slot] : null;
 
   // Guard: if confirm screen is reached with no valid slot, bounce back to detail.
-  // Placed here so curSlot is already in scope (avoids temporal dead zone).
   // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     if (screen === 'confirm' && ground && !curSlot) setScreen('detail');
@@ -2869,12 +2875,6 @@ export default function Outfield() {
     } else {
       fetchRealSlots(g, null, date);
     }
-  };
-  const activeCourt = ground?.isFacility ? court : null;
-  const getSlots = (g, d) => {
-    if (realSlots.length > 0) return realSlots;
-    if (g?.isFacility && court) return court.slots?.[d] || court.slots?.['Mar 10'] || [];
-    return g?.slots?.[d] || g?.slots?.['Mar 10'] || [];
   };
 
   // Haversine distance in km between two lat/lon points
