@@ -2793,13 +2793,49 @@ export default function Outfield() {
     }
   };
 
-  // Feature 2 — cancel booking
+  // Penalty tiers: strike 1→3d, 2→7d, 3→14d, 4+→30d
+  const BAN_DAYS = [3, 7, 14, 30];
+
+  // Returns true if this booking is within 24 hours of its slot start
+  const isCancelLate = (booking) => {
+    if (!booking) return false;
+    const months = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+    const parts = (booking.booking_date || '').split(' ');
+    if (parts.length < 2) return false;
+    const [h, m] = (booking.start_time || '00:00').split(':').map(Number);
+    const slotDate = new Date(new Date().getFullYear(), months[parts[0]] ?? 0, parseInt(parts[1]) || 1, h, m);
+    return (slotDate - new Date()) < 24 * 60 * 60 * 1000;
+  };
+
+  // Get days left on an active ban (0 = no ban)
+  const getBanDaysLeft = () => {
+    if (!authUser?.ban_until) return 0;
+    const ms = new Date(authUser.ban_until) - new Date();
+    return ms > 0 ? Math.ceil(ms / (1000 * 60 * 60 * 24)) : 0;
+  };
+
+  // Feature 2 — cancel booking with escalating penalty
   const handleCancelBooking = async (id) => {
+    const booking = [...(bookingHistory || []), ...(myBookings || [])].find(b => b.id === id);
+    const late = isCancelLate(booking);
+
     await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', id);
     setBookingHistory(prev => prev.map(b => b.id === id ? {...b, status: 'cancelled'} : b));
     setMyBookings(prev => prev.map(b => b.id === id ? {...b, status: 'cancelled'} : b));
     setCancelConfirmId(null);
-    showToast("Booking cancelled");
+
+    if (late && session?.user) {
+      const strikes = (authUser?.cancel_strikes || 0) + 1;
+      const banDays = BAN_DAYS[Math.min(strikes - 1, BAN_DAYS.length - 1)];
+      const banUntil = new Date(Date.now() + banDays * 24 * 60 * 60 * 1000).toISOString();
+      await supabase.from('users')
+        .update({ cancel_strikes: strikes, ban_until: banUntil })
+        .eq('id', session.user.id);
+      setAuthUser(prev => ({...prev, cancel_strikes: strikes, ban_until: banUntil}));
+      showToast(`Cancelled. Late cancellation — ${banDays}-day booking ban applied.`);
+    } else {
+      showToast("Booking cancelled");
+    }
   };
 
   // Feature 3 — save profile edits
@@ -2858,6 +2894,11 @@ export default function Outfield() {
 
   const handleConfirmBooking = async () => {
     if (!curSlot || !ground) return;
+    const daysLeft = getBanDaysLeft();
+    if (daysLeft > 0) {
+      showToast(`Booking ban active — ${daysLeft} day${daysLeft !== 1 ? 's' : ''} remaining.`);
+      return;
+    }
     setBookingCount(p => p + 1);
     if (session?.user && ground.id && typeof ground.id === 'string' && ground.id.includes('-')) {
       const ref = "OTF-" + Math.random().toString(36).substring(2,6).toUpperCase();
@@ -3995,12 +4036,16 @@ export default function Outfield() {
                         <div className="mc-spots">
                           {spotsLeft>0?`${spotsLeft} spot${spotsLeft!==1?"s":""} needed`:"Full"}
                         </div>
-                        <button className="mc-chat-btn" onClick={()=>startOrOpenChat({hostId:s.hostId||session?.user?.id,hostName:s.bookedBy||'Host',groundName:s.groundName,sport:s.sport,date:s.dateLabel,time:s.time,type:'players'})}>💬 Chat</button>
-                        <button className={`mc-join ${jnd?"done":""}`}
-                          onClick={()=>{const nv=!jnd;setJoined(p=>({...p,[jk]:nv}));showToast(nv?"Request sent!":"Request cancelled");}}
-                          disabled={spotsLeft<=0&&!jnd}>
-                          {jnd ? <><Check size={11} strokeWidth={2.5}/>Requested</> : <><UserPlus size={11} strokeWidth={2}/>I'm in!</>}
-                        </button>
+                        {authUser?.role !== 'owner' ? (<>
+                          <button className="mc-chat-btn" onClick={()=>startOrOpenChat({hostId:s.hostId||session?.user?.id,hostName:s.bookedBy||'Host',groundName:s.groundName,sport:s.sport,date:s.dateLabel,time:s.time,type:'players'})}>💬 Chat</button>
+                          <button className={`mc-join ${jnd?"done":""}`}
+                            onClick={()=>{const nv=!jnd;setJoined(p=>({...p,[jk]:nv}));showToast(nv?"Request sent!":"Request cancelled");}}
+                            disabled={spotsLeft<=0&&!jnd}>
+                            {jnd ? <><Check size={11} strokeWidth={2.5}/>Requested</> : <><UserPlus size={11} strokeWidth={2}/>I'm in!</>}
+                          </button>
+                        </>) : (
+                          <span style={{fontSize:10,color:"var(--ink4)",fontStyle:"italic"}}>View only</span>
+                        )}
                       </div>
                     </div>
                   );
@@ -4163,6 +4208,7 @@ export default function Outfield() {
                 <div className="cancel-sheet">
                   <div className="cancel-title">Cancel this booking?</div>
                   <div className="cancel-sub">This action cannot be undone. The slot will become available to other players.</div>
+                  <div className="cancel-sub" style={{color:"#F97316",marginTop:6,fontSize:11}}>⚠️ Cancelling within 24 hrs of the slot will result in a booking ban (3 days first offense, escalating on repeats).</div>
                   <div className="cancel-actions">
                     <button className="cancel-no" onClick={()=>setCancelConfirmId(null)}>Keep it</button>
                     <button className="cancel-yes" onClick={()=>handleCancelBooking(cancelConfirmId)}>Yes, cancel</button>
@@ -4849,12 +4895,16 @@ export default function Outfield() {
                         <div className="mc-spots">
                           {spotsLeft>0?`${spotsLeft} spot${spotsLeft!==1?"s":""} needed`:"Full"}
                         </div>
-                        <button className="mc-chat-btn" onClick={()=>startOrOpenChat({hostId:s.hostId||session?.user?.id,hostName:s.bookedBy||'Host',groundName:s.groundName,sport:s.sport,date:s.dateLabel,time:s.time,type:'players'})}>💬 Chat</button>
-                        <button className={`mc-join ${jnd?"done":""}`}
-                          onClick={()=>{const nv=!jnd;setJoined(p=>({...p,[jk]:nv}));showToast(nv?"Request sent!":"Request cancelled");}}
-                          disabled={spotsLeft<=0&&!jnd}>
-                          {jnd ? <><Check size={11} strokeWidth={2.5}/>Requested</> : <><UserPlus size={11} strokeWidth={2}/>I'm in!</>}
-                        </button>
+                        {authUser?.role !== 'owner' ? (<>
+                          <button className="mc-chat-btn" onClick={()=>startOrOpenChat({hostId:s.hostId||session?.user?.id,hostName:s.bookedBy||'Host',groundName:s.groundName,sport:s.sport,date:s.dateLabel,time:s.time,type:'players'})}>💬 Chat</button>
+                          <button className={`mc-join ${jnd?"done":""}`}
+                            onClick={()=>{const nv=!jnd;setJoined(p=>({...p,[jk]:nv}));showToast(nv?"Request sent!":"Request cancelled");}}
+                            disabled={spotsLeft<=0&&!jnd}>
+                            {jnd ? <><Check size={11} strokeWidth={2.5}/>Requested</> : <><UserPlus size={11} strokeWidth={2}/>I'm in!</>}
+                          </button>
+                        </>) : (
+                          <span style={{fontSize:10,color:"var(--ink4)",fontStyle:"italic"}}>View only</span>
+                        )}
                       </div>
                     </div>
                   );
@@ -5906,6 +5956,7 @@ export default function Outfield() {
                 <div className="cancel-sheet">
                   <div className="cancel-title">Cancel this booking?</div>
                   <div className="cancel-sub">This action cannot be undone. The slot will become available to other players.</div>
+                  <div className="cancel-sub" style={{color:"#F97316",marginTop:6,fontSize:11}}>⚠️ Cancelling within 24 hrs of the slot will result in a booking ban (3 days first offense, escalating on repeats).</div>
                   <div className="cancel-actions">
                     <button className="cancel-no" onClick={()=>setCancelConfirmId(null)}>Keep it</button>
                     <button className="cancel-yes" onClick={()=>handleCancelBooking(cancelConfirmId)}>Yes, cancel</button>
