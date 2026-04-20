@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "pk.outfield.app",
+    "sha256_cert_fingerprints": ["7D:AD:BF:1A:F1:44:A9:44:E2:CE:0C:52:E7:D1:DE:43:2B:E9:A1:6C:BA:20:51:AD:14:EF:A2:0D:C2:67:C7:5A"]
+  }
+}]
