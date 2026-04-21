@@ -2164,7 +2164,8 @@ export default function Outfield() {
       .from('grounds')
       .select('*, courts(id, name, sports, surface, capacity, price_base, price_peak, slot_duration_mins, notes, pricing_type)')
       .eq('status', 'live')
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) console.error('[grounds fetch]', error);
         if (data && data.length > 0) {
           const mapped = data.map(g => {
             const rawCourts = g.courts || [];
@@ -2981,7 +2982,7 @@ export default function Outfield() {
 
   const filtered = activeGrounds.filter(g => {
     const ms = sport === "all" || g.sports.includes(sport);
-    const mq = !search || g.name.toLowerCase().includes(search.toLowerCase()) || g.area.toLowerCase().includes(search.toLowerCase());
+    const mq = !search || (g.name || '').toLowerCase().includes(search.toLowerCase()) || (g.area || '').toLowerCase().includes(search.toLowerCase());
     // City filter
     const mc = filterCity === "all" || !g.city || g.city === filterCity;
     // Time filter — check if any slot in the ground falls within the selected time range
@@ -3715,8 +3716,9 @@ export default function Outfield() {
                   {[...featGrounds, ...featGrounds].map((g,i) => {
                     return (
                       <div key={i} className="hero-card" onClick={()=>openGround(g)}>
-                        <img className="hero-card-img" src={gImg(g)} alt={g.name}
-                          onError={e=>{e.target.style.display="none";}}/>
+                        {gImg(g)
+                          ? <img className="hero-card-img" src={gImg(g)} alt={g.name} onError={e=>{e.target.style.display="none";}}/>
+                          : <div className="hero-card-img" style={{background:"linear-gradient(135deg,#1a1a2e 0%,#16213e 100%)"}}/>}
                         <div className="hero-grad"/>
                         <div className="hero-top-row">
                           <div className="hero-rating-pill">
@@ -3780,7 +3782,9 @@ export default function Outfield() {
                   return (
                     <div key={g.id} className="gcard" onClick={()=>openGround(g)}>
                       <div className="gcard-img-wrap">
-                        <img className="gcard-img" src={gImg(g)} alt={g.name} onError={e=>{e.target.style.display="none";}}/>
+                        {gImg(g)
+                          ? <img className="gcard-img" src={gImg(g)} alt={g.name} onError={e=>{e.target.style.display="none";}}/>
+                          : <div className="gcard-img" style={{background:"linear-gradient(135deg,#1a1a2e 0%,#16213e 100%)"}}/>}
                         <div className="gcard-overlay"/>
                         <div className="gcard-tl">
                           <div className="img-pill">
