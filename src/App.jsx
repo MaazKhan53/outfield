@@ -4900,7 +4900,7 @@ export default function Outfield() {
                       <div className="c-block-title">Pay Advance via JazzCash</div>
                       <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:12,padding:"14px 16px",marginBottom:14}}>
                         <div style={{fontSize:13,fontWeight:700,color:"#92400E",marginBottom:6}}>Send Rs {advance.toLocaleString()} to:</div>
-                        <div style={{fontSize:15,fontWeight:800,color:"#C2410C",letterSpacing:1,marginBottom:4}}>OUTFIELD_JAZZCASH_NUMBER</div>
+                        <div style={{fontSize:15,fontWeight:800,color:"#C2410C",letterSpacing:1,marginBottom:4}}>0329-0351363</div>
                         <div style={{fontSize:12,color:"#92400E"}}>Account name: <strong>Outfield</strong></div>
                         <div style={{fontSize:11,color:"#B45309",marginTop:8,lineHeight:1.5}}>
                           Once sent, copy your JazzCash transaction ID and paste it below to confirm your booking.
