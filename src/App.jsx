@@ -2161,6 +2161,11 @@ export default function Outfield() {
   // Fetch real grounds from Supabase — refetch every time the home screen is entered
   useEffect(() => {
     if (screen !== 'home') return;
+    // Step 4 raw probe — no filters, no auth, just hit the table
+    supabase.from('grounds').select('id, name, status').limit(5)
+      .then(({ data: probe, error: probeErr }) => {
+        console.log('[RAW PROBE] data:', probe, '| error:', probeErr);
+      });
     supabase.auth.getSession().then(({ data: { session: s } }) => {
       console.log('[grounds fetch] screen=home | auth uid:', s?.user?.id ?? 'anon');
     });
@@ -2981,7 +2986,7 @@ export default function Outfield() {
     setScreen(toScreen);
   };
 
-  const activeGrounds = dbGrounds.length > 0 ? dbGrounds : GROUNDS;
+  const activeGrounds = dbGrounds; // never fall back to mock data
 
   const filtered = activeGrounds.filter(g => {
     const ms = sport === "all" || g.sports.includes(sport);
@@ -3780,6 +3785,7 @@ export default function Outfield() {
                 </div>
               )}
               <div className="glist">
+                {console.log('[render] dbGrounds:', dbGrounds.length, '| filtered:', filtered.length, '| ids:', filtered.map(g=>g.id))}
                 {filtered.map(g => {
                   const slots = getSlots(g,"Mar 10");
                   const freeN = slots.filter(s=>!s.booked).length;
