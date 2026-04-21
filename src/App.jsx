@@ -2171,7 +2171,7 @@ export default function Outfield() {
     });
     supabase
       .from('grounds')
-      .select('*, courts(id, name, sports, surface, capacity, price_base, price_peak, slot_duration_mins, notes, pricing_type)')
+      .select('*')
       .eq('status', 'live')
       .then(({ data, error }) => {
         console.log('[grounds fetch] rows:', data?.length ?? 0, '| error:', error ?? null);
@@ -2236,20 +2236,19 @@ export default function Outfield() {
     );
   }, []);
 
-  // Fetch owner dashboard — grounds with nested courts + booking counts
+  // Fetch owner dashboard — grounds only (no nested joins)
   useEffect(() => {
     if (authUser?.role !== "owner" || !session?.user) return;
     setOwnerDashLoading(true);
     supabase
       .from('grounds')
-      .select('*, courts(id, name, sports, price_base, bookings(id, status, total_price, booking_date))')
+      .select('*')
       .eq('owner_id', session.user.id)
       .order('created_at', { ascending: false })
       .then(({ data, error }) => {
         if (error) { console.error('Owner grounds fetch error:', error); setOwnerDashLoading(false); return; }
         const gList = data || [];
         setOwnerGrounds(gList);
-        setOwnerBookings(gList.flatMap(g => (g.courts||[]).flatMap(c => c.bookings||[])));
         setOwnerDashLoading(false);
       });
   }, [authUser, session, ownerDashRefreshTick]);
