@@ -63,6 +63,21 @@ CREATE POLICY "grounds_select" ON grounds FOR SELECT USING (status = 'live' OR a
 CREATE POLICY "grounds_insert" ON grounds FOR INSERT WITH CHECK (auth.uid() = owner_id);
 CREATE POLICY "grounds_update" ON grounds FOR UPDATE USING (auth.uid() = owner_id);
 
+-- Trim leading/trailing whitespace from status on every write so that
+-- manually-entered values like 'live\r\n' don't silently break RLS filters.
+CREATE OR REPLACE FUNCTION trim_grounds_status()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.status := regexp_replace(NEW.status, '\s+$', '');
+  NEW.status := regexp_replace(NEW.status, '^\s+', '');
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_trim_grounds_status ON grounds;
+CREATE TRIGGER trg_trim_grounds_status
+  BEFORE INSERT OR UPDATE ON grounds
+  FOR EACH ROW EXECUTE FUNCTION trim_grounds_status();
+
 
 -- ── 3. COURTS ────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS courts (
