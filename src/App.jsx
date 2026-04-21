@@ -2126,18 +2126,18 @@ export default function Outfield() {
   // Check for existing session on load
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('[auth] getSession', session?.user?.email ?? 'no session');
       setSession(session);
       if (session?.user) {
         supabase.from('users').select('*').eq('id', session.user.id).single()
           .then(({ data }) => {
-            if (data) {
-              setAuthUser(data);
-              // Auto-route returning users directly to home after splash
-              setTimeout(() => {
-                setScreen('home');
-                setNav('home');
-              }, 2200);
-            }
+            console.log('[auth] profile row', data);
+            if (data) setAuthUser(data);
+            // Always navigate home for returning sessions regardless of profile state
+            setTimeout(() => {
+              setScreen('home');
+              setNav('home');
+            }, 2200);
           });
       }
       setAuthChecked(true);
@@ -2161,12 +2161,16 @@ export default function Outfield() {
   // Fetch real grounds from Supabase — refetch every time the home screen is entered
   useEffect(() => {
     if (screen !== 'home') return;
+    supabase.auth.getSession().then(({ data: { session: s } }) => {
+      console.log('[grounds fetch] screen=home | auth uid:', s?.user?.id ?? 'anon');
+    });
     supabase
       .from('grounds')
       .select('*, courts(id, name, sports, surface, capacity, price_base, price_peak, slot_duration_mins, notes, pricing_type)')
       .eq('status', 'live')
       .then(({ data, error }) => {
-        if (error) { console.error('[grounds fetch]', error); return; }
+        console.log('[grounds fetch] rows:', data?.length ?? 0, '| error:', error ?? null);
+        if (error) { console.error('[grounds fetch] ERROR', error); return; }
         const mapped = (data || []).map(g => {
             const rawCourts = g.courts || [];
             const allSports = [...new Set(
