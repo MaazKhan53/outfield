@@ -2158,16 +2158,16 @@ export default function Outfield() {
     return () => clearInterval(t);
   }, [screen]);
 
-  // Fetch real grounds from Supabase
+  // Fetch real grounds from Supabase — refetch every time the home screen is entered
   useEffect(() => {
+    if (screen !== 'home') return;
     supabase
       .from('grounds')
       .select('*, courts(id, name, sports, surface, capacity, price_base, price_peak, slot_duration_mins, notes, pricing_type)')
       .eq('status', 'live')
       .then(({ data, error }) => {
-        if (error) console.error('[grounds fetch]', error);
-        if (data && data.length > 0) {
-          const mapped = data.map(g => {
+        if (error) { console.error('[grounds fetch]', error); return; }
+        const mapped = (data || []).map(g => {
             const rawCourts = g.courts || [];
             const allSports = [...new Set(
               rawCourts.flatMap(c => (c.sports || '').split(',').map(s => s.trim()).filter(Boolean))
@@ -2215,10 +2215,9 @@ export default function Outfield() {
               slots: {"default":[]}
             };
           });
-          setDbGrounds(mapped);
-        }
+        setDbGrounds(mapped);
       });
-  }, []);
+  }, [screen]);
 
   // Get user GPS for nearest-grounds carousel
   useEffect(() => {
@@ -3722,7 +3721,9 @@ export default function Outfield() {
                         <div className="hero-grad"/>
                         <div className="hero-top-row">
                           <div className="hero-rating-pill">
-                            <Star size={9} color="var(--amber)" fill="var(--amber)"/> {g.rating}
+                            {g.rating > 0
+                              ? <><Star size={9} color="var(--amber)" fill="var(--amber)"/>{g.rating}</>
+                              : "No ratings yet"}
                           </div>
                           <div className="hero-price-pill">Rs {g.priceFrom.toLocaleString()}</div>
                         </div>
@@ -3794,7 +3795,9 @@ export default function Outfield() {
                         </div>
                         <div className="gcard-tr">
                           <div className="img-pill" style={{background:"rgba(0,0,0,.55)"}}>
-                            <Star size={9} color="var(--amber)" fill="var(--amber)" strokeWidth={0}/> {g.rating}
+                            {g.rating > 0
+                              ? <><Star size={9} color="var(--amber)" fill="var(--amber)" strokeWidth={0}/> {g.rating}</>
+                              : "No ratings yet"}
                           </div>
                         </div>
                         <div className="gcard-bl">
