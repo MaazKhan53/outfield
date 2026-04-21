@@ -1999,6 +1999,8 @@ export default function Outfield() {
   const [ownerCancPolicy, setOwnerCancPolicy]     = useState("Flexible");
   const [ownerLateGrace, setOwnerLateGrace]       = useState("Not allowed");
   const [ownerMinAdvance, setOwnerMinAdvance]     = useState("1 hr");
+  const [ownerAdvanceRequired, setOwnerAdvanceRequired] = useState("");
+  const [ownerPaymentNumber, setOwnerPaymentNumber]     = useState("");
   const [ownerOpenFrom, setOwnerOpenFrom]         = useState("06:00");
   const [ownerOpenTill, setOwnerOpenTill]         = useState("23:00");
   const [ownerArea, setOwnerArea]                 = useState("");
@@ -2046,6 +2048,12 @@ export default function Outfield() {
   // Onboarding role restriction message
   const [obRoleMsg, setObRoleMsg] = useState(null); // null | 'player-listing' | 'owner-booking'
   const MAX_BOOKINGS = 2;
+  const [txnId, setTxnId]                               = useState("");
+  const [lastBookingPending, setLastBookingPending]     = useState(false);
+  const [adminBookings, setAdminBookings]               = useState([]);
+  const [adminLoading, setAdminLoading]                 = useState(false);
+  const [adminRejectId, setAdminRejectId]               = useState(null);
+  const [adminRejectReason, setAdminRejectReason]       = useState("");
   const [dbLfpPosts, setDbLfpPosts]           = useState([]);
   const [dbGrounds, setDbGrounds]             = useState([]);
   const [userGps, setUserGps]                 = useState(null); // [lat, lon] from browser GPS
@@ -2293,6 +2301,21 @@ export default function Outfield() {
     supabase.from('bookings').select('*').eq('player_id', session.user.id).order('created_at', { ascending: false })
       .then(({ data }) => { if (data) setMyBookings(data); });
   }, [screen, session]);
+
+  useEffect(() => {
+    if (screen !== 'home' || authUser?.role !== 'admin') return;
+    setAdminLoading(true);
+    supabase
+      .from('bookings')
+      .select('*, users!player_id(name, phone), courts!court_id(name, grounds!ground_id(name, contact_phone, advance_required, owner_id))')
+      .eq('status', 'pending_verification')
+      .order('created_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (error) console.error('[admin] pending bookings:', error);
+        setAdminBookings(data || []);
+        setAdminLoading(false);
+      });
+  }, [screen, authUser]);
 
   // Load favourite ground IDs on login
   useEffect(() => {
@@ -2926,6 +2949,7 @@ export default function Outfield() {
         phone: authUser?.phone || null,
       }, { onConflict: 'id', ignoreDuplicates: true });
 
+      const needsAdvance = (ground.advance_required || 0) > 0;
       const { error: bkErr } = await supabase.from('bookings').insert({
         court_id:       courtId,
         player_id:      session.user.id,
@@ -2934,16 +2958,19 @@ export default function Outfield() {
         end_time:       timeTo,
         total_price:    (curSlot.price || 0) * playerCount,
         player_count:   playerCount,
-        payment_method: pay,
-        status:         "confirmed",
+        payment_method: needsAdvance ? "jazzcash" : pay,
+        status:         needsAdvance ? "pending_verification" : "confirmed",
         booking_ref:    ref,
-        lfp_on:         lfp
+        lfp_on:         lfp,
+        transaction_id: needsAdvance ? (txnId || null) : null,
       });
       if (bkErr) {
         setBookingCount(p => p - 1);
         showToast("Booking failed: " + (bkErr.message || "Please try again."));
         return;
       }
+      setLastBookingPending(needsAdvance);
+      setTxnId("");
       // Mark slot as booked immediately in local state
       setRealSlots(prev => prev.map(s => s.startTime === timeFrom ? {...s, booked: true, lfp} : s));
       setBookedSlotKeys(prev => new Set([...prev, `${courtId}_${date}_${timeFrom}`]));
@@ -3463,6 +3490,79 @@ export default function Outfield() {
             <div style={{display:'flex',width:'500%',height:'100%',transform:`translateX(-${tabIndex * 20}%)`,transition:'transform 0.32s cubic-bezier(0.25,0.46,0.45,0.94)',willChange:'transform'}}>
               {/* HOME PANEL */}
               <div style={{width:'20%',flexShrink:0,overflowY:'auto',height:'100%',overscrollBehavior:'contain'}}>
+        {authUser?.role === "admin" && (
+          <div style={{background:"var(--bg)",paddingBottom:88,minHeight:"100%"}}>
+            <div style={{background:"linear-gradient(135deg,#1E40AF,#3B82F6)",padding:"32px 20px 24px",color:"#fff"}}>
+              <div style={{fontSize:11,fontWeight:700,opacity:.7,letterSpacing:1,marginBottom:4}}>ADMIN PANEL</div>
+              <div style={{fontSize:24,fontWeight:800}}>Outfield Admin</div>
+              <div style={{fontSize:13,opacity:.8,marginTop:4}}>Pending payment verifications</div>
+            </div>
+            <div style={{padding:"16px 16px 0"}}>
+              {adminLoading ? (
+                <div style={{textAlign:"center",padding:40,color:"var(--ink4)",fontSize:13}}>Loading...</div>
+              ) : adminBookings.length === 0 ? (
+                <div style={{textAlign:"center",padding:40}}>
+                  <CheckCircle size={32} color="#16A34A" strokeWidth={1.5} style={{marginBottom:10}}/>
+                  <div style={{fontSize:14,fontWeight:700,color:"var(--ink2)"}}>All clear!</div>
+                  <div style={{fontSize:12,color:"var(--ink4)",marginTop:4}}>No pending verifications.</div>
+                </div>
+              ) : adminBookings.map((b, i) => {
+                const playerName    = b.users?.name || "Unknown player";
+                const playerPhone   = b.users?.phone || "—";
+                const courtName     = b.courts?.name || "—";
+                const groundName    = b.courts?.grounds?.name || "—";
+                const ownerPhone    = b.courts?.grounds?.contact_phone || "—";
+                const totalPrice    = b.total_price || 0;
+                const advance       = b.courts?.grounds?.advance_required || 0;
+                const serviceFee    = Math.round(totalPrice * 0.10);
+                const ownerCut      = advance - serviceFee;
+                return (
+                  <div key={b.id || i} style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:16,padding:"16px",marginBottom:14}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                      <div>
+                        <div style={{fontSize:13,fontWeight:700,color:"var(--ink1)"}}>{playerName}</div>
+                        <div style={{fontSize:11,color:"var(--ink4)"}}>{playerPhone}</div>
+                      </div>
+                      <div style={{fontSize:10,fontWeight:700,background:"#FFF7ED",color:"#C2410C",borderRadius:8,padding:"4px 8px"}}>PENDING</div>
+                    </div>
+                    <div style={{fontSize:12,color:"var(--ink3)",marginBottom:8,display:"flex",flexDirection:"column",gap:3}}>
+                      <span>📍 {groundName} — {courtName}</span>
+                      <span>📅 {b.booking_date}  ⏰ {b.start_time} – {b.end_time}</span>
+                      <span>💰 Total: Rs {totalPrice.toLocaleString()}  |  Advance: Rs {advance.toLocaleString()}</span>
+                    </div>
+                    <div style={{background:"#F0F9FF",border:"1px solid #BAE6FD",borderRadius:10,padding:"10px 12px",marginBottom:10}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"#0369A1",marginBottom:3}}>Transaction ID submitted:</div>
+                      <div style={{fontSize:13,fontWeight:800,color:"#0C4A6E",letterSpacing:.5}}>{b.transaction_id || "—"}</div>
+                    </div>
+                    {advance > 0 && (
+                      <div style={{background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:10,padding:"10px 12px",marginBottom:10,fontSize:11,color:"#166534"}}>
+                        <strong>On confirm:</strong> Forward Rs {ownerCut.toLocaleString()} to owner at JazzCash <strong>{ownerPhone}</strong>
+                        <br/><span style={{opacity:.7}}>({advance.toLocaleString()} advance − {serviceFee.toLocaleString()} service fee = Rs {ownerCut.toLocaleString()})</span>
+                      </div>
+                    )}
+                    <div style={{display:"flex",gap:8}}>
+                      <button
+                        style={{flex:1,padding:"10px 0",borderRadius:10,background:"#16A34A",color:"#fff",fontWeight:700,fontSize:13,border:"none",cursor:"pointer"}}
+                        onClick={async()=>{
+                          const {error} = await supabase.from('bookings').update({status:"confirmed"}).eq('id',b.id);
+                          if(error){ showToast("Error: "+error.message); return; }
+                          setAdminBookings(prev=>prev.filter(x=>x.id!==b.id));
+                          showToast("Booking confirmed ✓");
+                        }}>
+                        ✓ Confirm
+                      </button>
+                      <button
+                        style={{flex:1,padding:"10px 0",borderRadius:10,background:"#DC2626",color:"#fff",fontWeight:700,fontSize:13,border:"none",cursor:"pointer"}}
+                        onClick={()=>{ setAdminRejectId(b.id); setAdminRejectReason(""); }}>
+                        ✕ Reject
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {authUser?.role === "owner" && (() => {
           const totalBookings = ownerBookings.length;
           const totalRevenue  = ownerBookings.reduce((s,b) => s + (b.total_price||0), 0);
@@ -4233,6 +4333,31 @@ export default function Outfield() {
                 </div>
               </div>
             )}
+            {adminRejectId && (
+              <div className="cancel-overlay" onClick={e=>{if(e.target.className==="cancel-overlay")setAdminRejectId(null);}}>
+                <div className="cancel-sheet">
+                  <div className="cancel-title">Reject this booking?</div>
+                  <div className="cancel-sub" style={{marginBottom:12}}>Player will see: "Payment not verified — contact outfield.application@gmail.com"</div>
+                  <textarea
+                    placeholder="Reason (optional, for internal notes)"
+                    value={adminRejectReason}
+                    onChange={e=>setAdminRejectReason(e.target.value)}
+                    style={{width:"100%",borderRadius:10,border:"1px solid var(--border)",padding:"10px 12px",fontSize:12,color:"var(--ink1)",background:"var(--card)",fontFamily:"Inter,sans-serif",resize:"none",marginBottom:12,boxSizing:"border-box"}}
+                    rows={3}
+                  />
+                  <div className="cancel-actions">
+                    <button className="cancel-no" onClick={()=>setAdminRejectId(null)}>Go back</button>
+                    <button className="cancel-yes" style={{background:"#DC2626"}} onClick={async()=>{
+                      const {error} = await supabase.from('bookings').update({status:"rejected"}).eq('id',adminRejectId);
+                      if(error){ showToast("Error: "+error.message); return; }
+                      setAdminBookings(prev=>prev.filter(x=>x.id!==adminRejectId));
+                      setAdminRejectId(null);
+                      showToast("Booking rejected.");
+                    }}>Reject</button>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="prof-head">
               <div className="prof-glow"/>
               <button className="prof-edit-btn"
@@ -4281,22 +4406,38 @@ export default function Outfield() {
               ) : (
                 <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
                   {myBookings.map((b, i) => {
-                    const statusCls = b.status === "confirmed" ? "confirmed" : b.status === "cancelled" ? "cancelled" : "pending";
-                    const canCancel = b.status === "confirmed" && isFutureBooking(b.booking_date);
+                    const st = b.status || "confirmed";
+                    const statusCls = st === "confirmed" ? "confirmed" : st === "cancelled" ? "cancelled" : st === "rejected" ? "cancelled" : "pending";
+                    const canCancel = st === "confirmed" && isFutureBooking(b.booking_date);
+                    const statusMsg = st === "pending_verification" ? "Payment being verified"
+                      : st === "confirmed"    ? null
+                      : st === "rejected"     ? "Payment not verified — contact outfield.application@gmail.com"
+                      : st === "completed"    ? "Booking completed"
+                      : st === "cancelled"    ? "Booking cancelled"
+                      : null;
+                    const remainingAtVenue = b.total_price > 0 ? b.total_price - (b.advance_paid || 0) : 0;
                     return (
                       <div key={b.id || i} className="bh-card">
                         <div className="bh-card-top">
                           <div className="bh-ground">{b.booking_ref || `Booking #${i+1}`}</div>
-                          <div className={`bh-status ${statusCls}`}>{b.status || "confirmed"}</div>
+                          <div className={`bh-status ${statusCls}`}>{st === "pending_verification" ? "pending" : st}</div>
                         </div>
                         <div className="bh-meta">
-                          <div className="bh-meta-item">
-                            <Calendar size={11} strokeWidth={2.5}/>{b.booking_date}
-                          </div>
-                          <div className="bh-meta-item">
-                            <Clock size={11} strokeWidth={2.5}/>{b.start_time} – {b.end_time}
-                          </div>
+                          <div className="bh-meta-item"><Calendar size={11} strokeWidth={2.5}/>{b.booking_date}</div>
+                          <div className="bh-meta-item"><Clock size={11} strokeWidth={2.5}/>{b.start_time} – {b.end_time}</div>
                         </div>
+                        {statusMsg && (
+                          <div style={{fontSize:11,color: st==="rejected" ? "#DC2626" : st==="completed" ? "#16A34A" : "#D97706",fontWeight:600,marginTop:6,lineHeight:1.4}}>
+                            {st==="rejected" && <AlertCircle size={11} strokeWidth={2.5} style={{marginRight:4,verticalAlign:"middle"}}/>}
+                            {statusMsg}
+                          </div>
+                        )}
+                        {st === "confirmed" && remainingAtVenue > 0 && (
+                          <div style={{fontSize:11,color:"#16A34A",fontWeight:600,marginTop:6}}>
+                            <CheckCircle size={11} strokeWidth={2.5} style={{marginRight:4,verticalAlign:"middle"}}/>
+                            Pay Rs {remainingAtVenue.toLocaleString()} remaining at venue
+                          </div>
+                        )}
                         <div className="bh-divider"/>
                         <div className="bh-bottom">
                           <div className="bh-ref">{b.booking_ref || "—"}</div>
@@ -4729,40 +4870,78 @@ export default function Outfield() {
                   <span className="c-total">Rs {(curSlot.price * playerCount)?.toLocaleString()}</span>
                 </div>
               </div>
-              <div className="c-block">
-                <div className="c-block-title">Payment Method</div>
-                <div className="pay-list">
-                  {[
-                    {id:"cash",   ico:"💵", label:"Pay at Ground"},
-                    {id:"easy",   ico:"📱", label:"EasyPaisa"},
-                    {id:"sada",   ico:"💳", label:"SadaPay"},
-                    {id:"jazz",   ico:"🎵", label:"JazzCash"},
-                  ].map(p=>(
-                    <div key={p.id} className={`pay-item ${pay===p.id?"sel":""}`} onClick={()=>setPay(p.id)}>
-                      <div className="pay-ico-wrap">{p.ico}</div>
-                      <span className="pay-label">{p.label}</span>
-                      <div className={`pay-radio ${pay===p.id?"sel":""}`}/>
-                    </div>
-                  ))}
-                </div>
-                {pay!=="cash" && (
-                  <div className="soon-note">
-                    <AlertCircle size={14} color="#D97706" strokeWidth={2}/>
-                    <span>In-app payments launching soon. You'll be redirected to the payment app.</span>
+              {(() => {
+                const totalPrice  = (curSlot.price || 0) * playerCount;
+                const advance     = ground.advance_required || 0;
+                const serviceFee  = advance > 0 ? Math.round(totalPrice * 0.10) : 0;
+                const payAtVenue  = totalPrice - advance;
+                const needsAdvance = advance > 0;
+                return (<>
+                  <div className="c-block">
+                    <div className="c-block-title">Payment Breakdown</div>
+                    {[
+                      ["Total Booking Price", `Rs ${totalPrice.toLocaleString()}`],
+                      ["Advance (pay now)", `Rs ${advance.toLocaleString()}`],
+                      ["Remaining at venue", `Rs ${payAtVenue.toLocaleString()}`],
+                    ].map(([l,v])=>(
+                      <div key={l} className="c-row">
+                        <span className="c-label">{l}</span>
+                        <span className="c-val" style={l==="Advance (pay now)"?{color:"var(--orange)",fontWeight:700}:{}}>{v}</span>
+                      </div>
+                    ))}
+                    {needsAdvance && (
+                      <div style={{marginTop:8,fontSize:10,color:"var(--ink4)",lineHeight:1.5,background:"var(--border2)",borderRadius:8,padding:"8px 10px"}}>
+                        Outfield collects a 10% service fee (Rs {serviceFee.toLocaleString()}) from the advance. The owner receives Rs {(advance - serviceFee).toLocaleString()} after verification.
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-              <button className="book-btn"
-                disabled={bookingCount >= MAX_BOOKINGS}
-                style={bookingCount >= MAX_BOOKINGS ? {opacity:.5,cursor:"not-allowed"} : {}}
-                onClick={()=>{
-                    if(bookingCount >= MAX_BOOKINGS) return;
-                    handleConfirmBooking();
-                  }}>
-                {bookingCount >= MAX_BOOKINGS
-                  ? "Booking Limit Reached (2 max)"
-                  : `Confirm Booking · Rs ${(curSlot.price * playerCount)?.toLocaleString()}`}
-              </button>
+                  {needsAdvance ? (
+                    <div className="c-block">
+                      <div className="c-block-title">Pay Advance via JazzCash</div>
+                      <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:12,padding:"14px 16px",marginBottom:14}}>
+                        <div style={{fontSize:13,fontWeight:700,color:"#92400E",marginBottom:6}}>Send Rs {advance.toLocaleString()} to:</div>
+                        <div style={{fontSize:15,fontWeight:800,color:"#C2410C",letterSpacing:1,marginBottom:4}}>OUTFIELD_JAZZCASH_NUMBER</div>
+                        <div style={{fontSize:12,color:"#92400E"}}>Account name: <strong>Outfield</strong></div>
+                        <div style={{fontSize:11,color:"#B45309",marginTop:8,lineHeight:1.5}}>
+                          Once sent, copy your JazzCash transaction ID and paste it below to confirm your booking.
+                        </div>
+                      </div>
+                      <label className="flbl" style={{fontSize:12,fontWeight:600,color:"var(--ink2)",marginBottom:6,display:"block"}}>
+                        JazzCash Transaction ID <span style={{color:"var(--red)"}}>*</span>
+                      </label>
+                      <input
+                        className="finput"
+                        placeholder="e.g. T20240421XXXXXXXX"
+                        value={txnId}
+                        onChange={e=>setTxnId(e.target.value)}
+                        style={{marginBottom:0}}
+                      />
+                    </div>
+                  ) : (
+                    <div className="c-block">
+                      <div className="c-block-title">Payment</div>
+                      <div style={{display:"flex",alignItems:"center",gap:10,background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:12,padding:"12px 14px"}}>
+                        <CheckCircle size={16} color="#16A34A" strokeWidth={2.5}/>
+                        <div style={{fontSize:12,color:"#166534",fontWeight:600}}>No advance required — pay full amount at venue.</div>
+                      </div>
+                    </div>
+                  )}
+                  <button className="book-btn"
+                    disabled={bookingCount >= MAX_BOOKINGS || (needsAdvance && !txnId.trim())}
+                    style={(bookingCount >= MAX_BOOKINGS || (needsAdvance && !txnId.trim())) ? {opacity:.5,cursor:"not-allowed"} : {}}
+                    onClick={()=>{
+                      if(bookingCount >= MAX_BOOKINGS) return;
+                      if(needsAdvance && !txnId.trim()) { showToast("Please enter your JazzCash transaction ID."); return; }
+                      handleConfirmBooking();
+                    }}>
+                    {bookingCount >= MAX_BOOKINGS
+                      ? "Booking Limit Reached (2 max)"
+                      : needsAdvance
+                        ? `Submit Booking · Advance Rs ${advance.toLocaleString()}`
+                        : `Confirm Booking · Rs ${totalPrice.toLocaleString()}`}
+                  </button>
+                </>);
+              })()}
             </div>
           </div>
         )}
@@ -4773,11 +4952,19 @@ export default function Outfield() {
             <div className="success-ring">
               <Check size={40} color="#fff" strokeWidth={3}/>
             </div>
-            <div className="success-title">You're booked!</div>
+            <div className="success-title">{lastBookingPending ? "Payment Submitted!" : "You're booked!"}</div>
             <div className="success-sub">
-              Slot confirmed. Just show up and play.
-              {lfp && <><br/><span style={{color:"var(--orange)",fontWeight:700}}>Matchmaking alert is live!</span></>}
+              {lastBookingPending
+                ? "Your payment is being verified by Outfield. You'll be notified once confirmed."
+                : <>Slot confirmed. Just show up and play.{lfp && <><br/><span style={{color:"var(--orange)",fontWeight:700}}>Matchmaking alert is live!</span></>}</>
+              }
             </div>
+            {lastBookingPending && (
+              <div style={{display:"flex",alignItems:"center",gap:9,background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:12,padding:"10px 14px",marginTop:8,fontSize:11,color:"#92400E",fontWeight:600,width:"100%",textAlign:"left"}}>
+                <AlertCircle size={14} color="#C2410C" strokeWidth={2.5} style={{flexShrink:0}}/>
+                Verification usually takes a few hours. Check your booking status in Profile.
+              </div>
+            )}
             {/* Feature 2: email confirmation note */}
             {session?.user?.email && (
               <div style={{display:"flex",alignItems:"center",gap:7,background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:12,padding:"9px 14px",marginTop:10,fontSize:11,color:"var(--green-d)",fontWeight:600,width:"100%",textAlign:"left"}}>
@@ -5444,6 +5631,14 @@ export default function Outfield() {
                     <div className="fg"><label className="flbl">Security Deposit per Booking (Rs, optional)</label>
                       <input className="finput" type="number" placeholder="e.g. 500"/>
                     </div>
+                    <div className="fg">
+                      <label className="flbl">Advance Payment Required (Rs) <span style={{color:"var(--orange)"}}>— enables online payment</span></label>
+                      <input className="finput" type="number" placeholder="e.g. 1000 — leave blank if no advance needed"
+                        value={ownerAdvanceRequired} onChange={e=>setOwnerAdvanceRequired(e.target.value)}/>
+                      <div style={{fontSize:10,color:"var(--ink4)",marginTop:5,lineHeight:1.5}}>
+                        Players will pay this amount to Outfield's JazzCash to confirm their booking. Outfield forwards it to you (minus 10% service fee) after verification.
+                      </div>
+                    </div>
                     <div className="fg"><label className="flbl">Minimum Advance Booking Time</label>
                       <div className="slot-dur-opts">
                         {["30 min","1 hr","2 hr","Same day","1 day prior"].map(t=>(
@@ -5471,6 +5666,12 @@ export default function Outfield() {
                         style={ownerFormError && !ownerPhone ? {borderColor:"var(--red)"} : {}}/>
                     </div>
                     <div className="fg"><label className="flbl">WhatsApp (optional)</label><input className="finput" type="tel" placeholder="03XX-XXXXXXX"/></div>
+                    <div className="fg">
+                      <label className="flbl">JazzCash / Easypaisa Number (for receiving advance payments)</label>
+                      <input className="finput" type="tel" placeholder="03XX-XXXXXXX"
+                        value={ownerPaymentNumber} onChange={e=>setOwnerPaymentNumber(e.target.value)}/>
+                      <div style={{fontSize:10,color:"var(--ink4)",marginTop:5}}>Outfield will transfer your advance cut to this number after each verified booking.</div>
+                    </div>
                     <div className="fg"><label className="flbl">Instagram Handle (optional)</label><input className="finput" placeholder="@yourfacility"/></div>
                     <div className="fg"><label className="flbl">Facebook Page (optional)</label><input className="finput" placeholder="facebook.com/yourfacility"/></div>
                   </div>
@@ -5674,9 +5875,10 @@ export default function Outfield() {
                             open_till:     ownerOpenTill || "23:00",
                             amenities:     ownerAmenities.join(','),
                             contact_phone: ownerPhone.trim() || "",
-                            img_url:       uploadedImgUrls[0] || ownerImg || null,
-                            rating:        0,
-                            status:        "pending",
+                            img_url:           uploadedImgUrls[0] || ownerImg || null,
+                            rating:            0,
+                            status:            "pending",
+                            advance_required:  parseInt(ownerAdvanceRequired) || 0,
                             latitude:      ownerLat || 24.8607,
                             longitude:     ownerLng || 67.0011
                           })
@@ -5708,8 +5910,12 @@ export default function Outfield() {
                             return;
                           }
                           showToast("Submitted! We'll review and go live within 24 hours.");
+                          // Save owner payment number to their profile
+                          if (ownerPaymentNumber.trim()) {
+                            await supabase.from('users').update({ payment_number: ownerPaymentNumber.trim() }).eq('id', session.user.id);
+                          }
                           // Reset form state
-                          setOwnerFacilityName(""); setOwnerArea(""); setOwnerPhone("");
+                          setOwnerFacilityName(""); setOwnerArea(""); setOwnerPhone(""); setOwnerAdvanceRequired(""); setOwnerPaymentNumber("");
                           setOwnerDescription(""); setOwnerAmenities([]);
                           setUploadedImgUrls([]); setOwnerImg(null);
                           setOwnerCourts([{id:Date.now(),name:"Ground 1",sports:[],type:"",capacity:"",priceBase:"",pricePeak:"",slotDur:"2 hr",notes:"",pricingType:"fixed"}]);
@@ -6386,7 +6592,12 @@ export default function Outfield() {
         {/* ═══ NAV BAR ═══ */}
         {!["splash","onboard","success","owner"].includes(screen) && (
           <div className="navbar">
-            {(authUser?.role === 'owner'
+            {(authUser?.role === 'admin'
+              ? [
+                  {id:"home",    Icon:Home,    label:"Dashboard"},
+                  {id:"profile", Icon:User,    label:"Profile"},
+                ]
+              : authUser?.role === 'owner'
               ? [
                   {id:"home",    Icon:Home,    label:"Home"},
                   {id:"map",     Icon:Map,     label:"Map"},

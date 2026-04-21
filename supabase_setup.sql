@@ -8,15 +8,17 @@
 
 -- ── 1. USERS ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS users (
-  id         uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  name       text,
-  phone      text UNIQUE,
-  role       text DEFAULT 'player',
-  city       text,
-  dob        text,
-  age        int,
-  created_at timestamptz DEFAULT now()
+  id             uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  name           text,
+  phone          text UNIQUE,
+  role           text DEFAULT 'player',
+  city           text,
+  dob            text,
+  age            int,
+  payment_number text,
+  created_at     timestamptz DEFAULT now()
 );
+ALTER TABLE users ADD COLUMN IF NOT EXISTS payment_number text;
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "users_select" ON users;
 DROP POLICY IF EXISTS "users_insert" ON users;
@@ -50,9 +52,11 @@ CREATE TABLE IF NOT EXISTS grounds (
   img_url       text,
   latitude      numeric,
   longitude     numeric,
-  status        text DEFAULT 'pending',
-  created_at    timestamptz DEFAULT now()
+  status            text DEFAULT 'pending',
+  advance_required  int DEFAULT 0,
+  created_at        timestamptz DEFAULT now()
 );
+ALTER TABLE grounds ADD COLUMN IF NOT EXISTS advance_required int DEFAULT 0;
 ALTER TABLE grounds ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "grounds_select" ON grounds;
 DROP POLICY IF EXISTS "grounds_insert" ON grounds;
@@ -116,12 +120,16 @@ CREATE TABLE IF NOT EXISTS bookings (
   end_time       text NOT NULL,
   total_price    numeric DEFAULT 0,
   player_count   int DEFAULT 1,
-  payment_method text DEFAULT 'cash',
-  status         text DEFAULT 'confirmed',
-  booking_ref    text,
-  lfp_on         boolean DEFAULT false,
-  created_at     timestamptz DEFAULT now()
+  payment_method  text DEFAULT 'cash',
+  status          text DEFAULT 'confirmed',
+  booking_ref     text,
+  lfp_on          boolean DEFAULT false,
+  transaction_id  text,
+  advance_paid    numeric DEFAULT 0,
+  created_at      timestamptz DEFAULT now()
 );
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS transaction_id text;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS advance_paid numeric DEFAULT 0;
 ALTER TABLE bookings ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "bookings_player_insert" ON bookings;
 DROP POLICY IF EXISTS "bookings_player_select" ON bookings;
