@@ -15,6 +15,14 @@ dist-ssr
 .env.*
 !.env.example
 
+# Android build artifacts & secrets
+android.keystore
+*.keystore
+app-release-signed.apk
+app-release-unsigned-aligned.apk
+app-release-signed.apk.idsig
+app-release-bundle.aab
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
