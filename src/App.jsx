@@ -2001,6 +2001,14 @@ export default function Outfield() {
   const [ownerMinAdvance, setOwnerMinAdvance]     = useState("1 hr");
   const [ownerAdvanceRequired, setOwnerAdvanceRequired] = useState("");
   const [ownerPaymentNumber, setOwnerPaymentNumber]     = useState("");
+  const [editGroundModal, setEditGroundModal]           = useState(null);
+  const [editGroundName, setEditGroundName]             = useState("");
+  const [editGroundArea, setEditGroundArea]             = useState("");
+  const [editGroundOpenFrom, setEditGroundOpenFrom]     = useState("");
+  const [editGroundOpenTill, setEditGroundOpenTill]     = useState("");
+  const [editGroundAdvance, setEditGroundAdvance]       = useState("");
+  const [editGroundPhone, setEditGroundPhone]           = useState("");
+  const [editGroundSaving, setEditGroundSaving]         = useState(false);
   const [ownerOpenFrom, setOwnerOpenFrom]         = useState("06:00");
   const [ownerOpenTill, setOwnerOpenTill]         = useState("23:00");
   const [ownerArea, setOwnerArea]                 = useState("");
@@ -2177,63 +2185,63 @@ export default function Outfield() {
     supabase.auth.getSession().then(({ data: { session: s } }) => {
       console.log('[grounds fetch] screen=home | auth uid:', s?.user?.id ?? 'anon');
     });
-    supabase
-      .from('grounds')
-      .select('*')
-      .eq('status', 'live')
-      .then(({ data, error }) => {
-        console.log('[grounds fetch] rows:', data?.length ?? 0, '| error:', error ?? null);
-        if (error) { console.error('[grounds fetch] ERROR', error); return; }
-        const mapped = (data || []).map(g => {
-            const rawCourts = g.courts || [];
-            const allSports = [...new Set(
-              rawCourts.flatMap(c => (c.sports || '').split(',').map(s => s.trim()).filter(Boolean))
-            )];
-            const prices = rawCourts.map(c => c.price_base).filter(Boolean);
-            // Normalise each court so both camelCase and snake_case fields are available
-            const mappedCourts = rawCourts.map(c => {
-              const sportsArr = (c.sports || '').split(',').map(s => s.trim()).filter(Boolean);
-              const pb = c.price_base || 2000;
-              const pp = c.price_peak || pb;
-              return {
-                id: c.id,
-                name: c.name || 'Court',
-                sports: sportsArr.length ? sportsArr : ['cricket'],
-                surface: c.surface || 'Outdoor',
-                capacity: c.capacity || 22,
-                priceBase: pb,
-                pricePeak: pp,
-                price_base: pb,
-                price_peak: pp,
-                slot_duration_mins: c.slot_duration_mins || 120,
-                notes: c.notes || '',
-              };
-            });
-            return {
-              id: g.id,
-              name: g.name,
-              area: g.area,
-              city: g.city,
-              distance: "—",
-              rating: g.rating || 0,
-              reviews: 0,
-              priceFrom: prices.length > 0 ? Math.min(...prices) : 2000,
-              sports: allSports.length > 0 ? allSports : ["cricket","football"],
-              amenities: g.amenities ? g.amenities.split(',').map(a => a.trim()).filter(Boolean) : [],
-              openFrom: g.open_from || "06:00",
-              openTill: g.open_till || "23:00",
-              description: g.description || "",
-              img: g.img_url,
-              latitude: g.latitude || null,
-              longitude: g.longitude || null,
-              customImage: null,
-              isFacility: mappedCourts.length > 1,
-              courts: mappedCourts,
-              slots: {"default":[]}
-            };
-          });
-        setDbGrounds(mapped);
+    (async () => {
+      const { data, error } = await supabase.from('grounds').select('*').eq('status', 'live');
+      console.log('[grounds fetch] rows:', data?.length ?? 0, '| error:', error ?? null);
+      if (error) { console.error('[grounds fetch] ERROR', error); return; }
+      if (!data || data.length === 0) { setDbGrounds([]); return; }
+
+      // Fetch courts for all grounds in one query (avoids PGRST200 nested select issues)
+      const groundIds = data.map(g => g.id);
+      const { data: courtsData } = await supabase
+        .from('courts')
+        .select('id, ground_id, name, sports, surface, capacity, price_base, price_peak, slot_duration_mins, notes, pricing_type')
+        .in('ground_id', groundIds);
+      const courtsByGround = {};
+      (courtsData || []).forEach(c => {
+        if (!courtsByGround[c.ground_id]) courtsByGround[c.ground_id] = [];
+        courtsByGround[c.ground_id].push(c);
       });
+
+      const mapped = data.map(g => {
+        const rawCourts = courtsByGround[g.id] || [];
+        const allSports = [...new Set(
+          rawCourts.flatMap(c => (c.sports || '').split(',').map(s => s.trim()).filter(Boolean))
+        )];
+        const prices = rawCourts.map(c => c.price_base).filter(Boolean);
+        const mappedCourts = rawCourts.map(c => {
+          const sportsArr = (c.sports || '').split(',').map(s => s.trim()).filter(Boolean);
+          const pb = c.price_base || 0;
+          const pp = c.price_peak || pb;
+          return {
+            id: c.id, ground_id: c.ground_id,
+            name: c.name || 'Court',
+            sports: sportsArr.length ? sportsArr : ['cricket'],
+            surface: c.surface || 'Outdoor',
+            capacity: c.capacity || 22,
+            priceBase: pb, pricePeak: pp, price_base: pb, price_peak: pp,
+            slot_duration_mins: c.slot_duration_mins || 120,
+            notes: c.notes || '',
+            pricing_type: c.pricing_type || 'fixed',
+          };
+        });
+        return {
+          id: g.id, name: g.name, area: g.area, city: g.city,
+          distance: "—", rating: g.rating || 0, reviews: 0,
+          priceFrom: prices.length > 0 ? Math.min(...prices) : 0,
+          sports: allSports.length > 0 ? allSports : ["cricket","football"],
+          amenities: g.amenities ? g.amenities.split(',').map(a => a.trim()).filter(Boolean) : [],
+          openFrom: g.open_from || "06:00", openTill: g.open_till || "23:00",
+          description: g.description || "",
+          img: g.img_url, latitude: g.latitude || null, longitude: g.longitude || null,
+          advance_required: g.advance_required || 0,
+          contact_phone: g.contact_phone || "",
+          customImage: null, isFacility: mappedCourts.length > 1,
+          courts: mappedCourts, slots: {"default":[]}
+        };
+      });
+      setDbGrounds(mapped);
+    })();
   }, [screen]);
 
   // Get user GPS for nearest-grounds carousel
@@ -2264,22 +2272,28 @@ export default function Outfield() {
   // Real-time: owner dashboard refreshes when any new booking lands on their courts
   useEffect(() => {
     if (authUser?.role !== 'owner' || !session?.user) return;
+    const ownerId = session.user.id;
     const channel = supabase
-      .channel(`owner-bookings-${session.user.id}`)
+      .channel(`owner-bookings-${ownerId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'bookings' },
-        (payload) => {
+        async (payload) => {
           const b = payload.new;
-          // Only refresh if this booking belongs to one of this owner's courts
-          const ownerCourtIds = new Set(
-            (ownerGrounds || []).flatMap(g => (g.courts || []).map(c => c.id))
-          );
-          if (ownerCourtIds.has(b.court_id)) {
+          if (!b.court_id) return;
+          // Verify this court belongs to this owner before updating state
+          const { data: courtRow } = await supabase
+            .from('courts')
+            .select('id, grounds!inner(owner_id)')
+            .eq('id', b.court_id)
+            .eq('grounds.owner_id', ownerId)
+            .single();
+          if (courtRow) {
             setOwnerBookings(prev => [...prev, b]);
+            setOwnerDashRefreshTick(t => t + 1);
           }
         })
       .subscribe();
     return () => supabase.removeChannel(channel);
-  }, [authUser?.role, session?.user?.id, ownerGrounds]);
+  }, [authUser?.role, session?.user?.id]);
 
   // Fetch booking history when profile or bookingHistory screen is active
   useEffect(() => {
@@ -2395,7 +2409,7 @@ export default function Outfield() {
 
     if (isRealId && selectedDate) {
       const [bookedRes, blockedRes] = await Promise.all([
-        supabase.from('bookings').select('start_time').eq('court_id', courtId).eq('booking_date', selectedDate).eq('status', 'confirmed'),
+        supabase.from('bookings').select('start_time').eq('court_id', courtId).eq('booking_date', selectedDate).in('status', ['confirmed', 'pending_verification']),
         supabase.from('blocked_slots').select('start_time').eq('court_id', courtId).eq('date', selectedDate)
       ]);
       const bookedTimes  = new Set((bookedRes.data  || []).map(b => b.start_time));
@@ -2427,7 +2441,7 @@ export default function Outfield() {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'bookings', filter: `court_id=eq.${courtId}` },
         (payload) => {
           const b = payload.new;
-          if (b.booking_date === date && b.status === 'confirmed') {
+          if (b.booking_date === date && ['confirmed','pending_verification'].includes(b.status)) {
             setRealSlots(prev => prev.map(s => s.startTime === b.start_time ? { ...s, booked: true } : s));
           }
         })
@@ -3695,11 +3709,21 @@ export default function Outfield() {
                           </div>
                         </div>
 
-                        {/* Footer: toggle */}
+                        {/* Footer: edit + toggle */}
                         <div className="odash-ground-footer">
-                          <div style={{fontSize:10,color:"var(--ink4)",fontWeight:600}}>
-                            {g.open_from||"—"} – {g.open_till||"—"}
-                          </div>
+                          <button
+                            style={{fontSize:11,fontWeight:700,color:"var(--ink3)",background:"var(--border2)",border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontFamily:"Inter,sans-serif"}}
+                            onClick={()=>{
+                              setEditGroundModal(g);
+                              setEditGroundName(g.name||"");
+                              setEditGroundArea(g.area||"");
+                              setEditGroundOpenFrom(g.open_from||"06:00");
+                              setEditGroundOpenTill(g.open_till||"23:00");
+                              setEditGroundAdvance(String(g.advance_required||""));
+                              setEditGroundPhone(g.contact_phone||"");
+                            }}>
+                            ✏ Edit
+                          </button>
                           {statusKey === "pending" ? (
                             <div style={{fontSize:10,fontWeight:700,color:"#D97706",background:"#FEF3C7",borderRadius:100,padding:"5px 11px"}}>
                               ⏳ Awaiting Review
@@ -3954,7 +3978,7 @@ export default function Outfield() {
                               );
                             })}
                           </div>
-                          <div className="gcard-price">Rs {g.priceFrom.toLocaleString()}<span>/slot</span></div>
+                          <div className="gcard-price">{g.priceFrom > 0 ? <>Rs {g.priceFrom.toLocaleString()}<span>/slot</span></> : <span style={{fontSize:10}}>Price on request</span>}</div>
                         </div>
                       </div>
                     </div>
@@ -4329,6 +4353,63 @@ export default function Outfield() {
                   <div className="cancel-actions">
                     <button className="cancel-no" onClick={()=>setCancelConfirmId(null)}>Keep it</button>
                     <button className="cancel-yes" onClick={()=>handleCancelBooking(cancelConfirmId)}>Yes, cancel</button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {editGroundModal && (
+              <div className="cancel-overlay" onClick={e=>{if(e.target.className==="cancel-overlay")setEditGroundModal(null);}}>
+                <div className="cancel-sheet" style={{paddingBottom:32,maxHeight:"85vh",overflowY:"auto"}}>
+                  <div className="cancel-title" style={{marginBottom:4}}>Edit Ground</div>
+                  <div style={{fontSize:12,color:"var(--ink4)",marginBottom:16}}>{editGroundModal.name}</div>
+                  {[
+                    ["Ground Name", editGroundName, setEditGroundName, "text", "e.g. DHA Sports Complex"],
+                    ["Area / Neighbourhood", editGroundArea, setEditGroundArea, "text", "e.g. DHA Phase 5"],
+                    ["Contact Phone", editGroundPhone, setEditGroundPhone, "tel", "03XX-XXXXXXX"],
+                    ["Advance Required (Rs)", editGroundAdvance, setEditGroundAdvance, "number", "e.g. 1000 (0 = no advance)"],
+                  ].map(([lbl, val, setter, type, ph]) => (
+                    <div key={lbl} style={{marginBottom:12}}>
+                      <label style={{fontSize:12,fontWeight:600,color:"var(--ink2)",display:"block",marginBottom:5}}>{lbl}</label>
+                      <input className="finput" type={type} placeholder={ph} value={val} onChange={e=>setter(e.target.value)}
+                        style={{width:"100%",boxSizing:"border-box"}}/>
+                    </div>
+                  ))}
+                  <div style={{display:"flex",gap:8,marginBottom:12}}>
+                    <div style={{flex:1}}>
+                      <label style={{fontSize:12,fontWeight:600,color:"var(--ink2)",display:"block",marginBottom:5}}>Open From</label>
+                      <input className="finput" type="time" value={editGroundOpenFrom} onChange={e=>setEditGroundOpenFrom(e.target.value)}/>
+                    </div>
+                    <div style={{flex:1}}>
+                      <label style={{fontSize:12,fontWeight:600,color:"var(--ink2)",display:"block",marginBottom:5}}>Open Till</label>
+                      <input className="finput" type="time" value={editGroundOpenTill} onChange={e=>setEditGroundOpenTill(e.target.value)}/>
+                    </div>
+                  </div>
+                  <div style={{fontSize:10,color:"var(--ink4)",background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:8,padding:"8px 10px",marginBottom:16,lineHeight:1.5}}>
+                    Setting Advance Required to a number &gt; 0 enables the JazzCash payment flow for this ground. Players will be asked to send that amount to <strong>0329-0351363</strong> before their booking is confirmed.
+                  </div>
+                  <div className="cancel-actions">
+                    <button className="cancel-no" onClick={()=>setEditGroundModal(null)}>Cancel</button>
+                    <button className="cancel-yes"
+                      disabled={editGroundSaving}
+                      style={{opacity:editGroundSaving?.5:1}}
+                      onClick={async()=>{
+                        setEditGroundSaving(true);
+                        const {error} = await supabase.from('grounds').update({
+                          name:             editGroundName.trim()||editGroundModal.name,
+                          area:             editGroundArea.trim()||editGroundModal.area,
+                          open_from:        editGroundOpenFrom||editGroundModal.open_from,
+                          open_till:        editGroundOpenTill||editGroundModal.open_till,
+                          contact_phone:    editGroundPhone.trim(),
+                          advance_required: parseInt(editGroundAdvance)||0,
+                        }).eq('id', editGroundModal.id);
+                        setEditGroundSaving(false);
+                        if(error){ showToast("Save failed: "+error.message); return; }
+                        setOwnerDashRefreshTick(t=>t+1);
+                        setEditGroundModal(null);
+                        showToast("Ground updated ✓");
+                      }}>
+                      {editGroundSaving ? "Saving…" : "Save Changes"}
+                    </button>
                   </div>
                 </div>
               </div>
