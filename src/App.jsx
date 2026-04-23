@@ -412,7 +412,7 @@ const generateTimeSlots = (openFrom, openTill, slotDurationMins, priceBase, pric
       time:      `${fromH}:${fromM}–${toH}:${toM}`,
       startTime: `${fromH}:${fromM}`,
       endTime:   `${toH}:${toM}`,
-      price:     isPeak ? (pricePeak || priceBase || 2000) : (priceBase || 2000),
+      price:     isPeak ? (pricePeak || priceBase || 0) : (priceBase || 0),
       booked:    false,
       blocked:   false,
       lfp:       false
@@ -1907,7 +1907,7 @@ function MapScreen({ grounds, darkMode, isActive, onBookGround, ownerId }) {
                 <Star size={11} fill="#F59E0B" color="#F59E0B" strokeWidth={0}/> {selected.rating}
               </span>
             )}
-            <span className="map-popup-price">from Rs {(selected.priceFrom||2000).toLocaleString()}</span>
+            <span className="map-popup-price">{selected.priceFrom > 0 ? `from Rs ${selected.priceFrom.toLocaleString()}` : "Price on request"}</span>
           </div>
           <button className="map-popup-book" onClick={() => { onBookGround(selected); setSelected(null); }}>
             Book Now
@@ -2177,17 +2177,8 @@ export default function Outfield() {
   // Fetch real grounds from Supabase — refetch every time the home screen is entered
   useEffect(() => {
     if (screen !== 'home') return;
-    // Step 4 raw probe — no filters, no auth, just hit the table
-    supabase.from('grounds').select('id, name, status').limit(5)
-      .then(({ data: probe, error: probeErr }) => {
-        console.log('[RAW PROBE] data:', probe, '| error:', probeErr);
-      });
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
-      console.log('[grounds fetch] screen=home | auth uid:', s?.user?.id ?? 'anon');
-    });
     (async () => {
       const { data, error } = await supabase.from('grounds').select('*').eq('status', 'live');
-      console.log('[grounds fetch] rows:', data?.length ?? 0, '| error:', error ?? null);
       if (error) { console.error('[grounds fetch] ERROR', error); return; }
       if (!data || data.length === 0) { setDbGrounds([]); return; }
 
@@ -2399,7 +2390,7 @@ export default function Outfield() {
     const openFrom  = activeGround.openFrom || activeGround.open_from || '06:00';
     const openTill  = activeGround.openTill || activeGround.open_till || '23:00';
     const duration  = activeCourt?.slot_duration_mins || 120;
-    const priceBase = activeCourt?.price_base || activeCourt?.priceBase || activeGround.priceFrom || 2000;
+    const priceBase = activeCourt?.price_base || activeCourt?.priceBase || activeGround.priceFrom || 0;
     const pricePeak = activeCourt?.price_peak || activeCourt?.pricePeak || priceBase;
 
     let generated = generateTimeSlots(openFrom, openTill, duration, priceBase, pricePeak);
@@ -3037,8 +3028,8 @@ export default function Outfield() {
     let mt = true;
     if (timeFilterFrom && timeFilterTo) {
       const allSlots = g.isFacility
-        ? (g.courts||[]).flatMap(c => c.slots?.["Mar 10"] || [])
-        : (g.slots?.["Mar 10"] || []);
+        ? (g.courts||[]).flatMap(c => c.slots?.[date] || [])
+        : (g.slots?.[date] || []);
       mt = allSlots.some(s => {
         if (s.booked) return false;
         const slotFrom = s.time.split("–")[0];
@@ -3051,8 +3042,8 @@ export default function Outfield() {
   const activeCourt = ground?.isFacility ? court : null;
   const getSlots = (g, d) => {
     if (realSlots.length > 0) return realSlots;
-    if (g?.isFacility && court) return court.slots?.[d] || court.slots?.['Mar 10'] || [];
-    return g?.slots?.[d] || g?.slots?.['Mar 10'] || [];
+    if (g?.isFacility && court) return court.slots?.[d] || [];
+    return g?.slots?.[d] || [];
   };
 
   const curSlot  = ground && slot !== null ? getSlots(ground, date)[slot] : null;
@@ -3767,7 +3758,7 @@ export default function Outfield() {
                   <div className="hgreet">Good evening</div>
                   <div className="hname">Find a Ground</div>
                   <div className="hloc">
-                    <MapPin size={10} color="rgba(255,255,255,.35)" strokeWidth={2}/> Karachi, Pakistan
+                    <MapPin size={10} color="rgba(255,255,255,.35)" strokeWidth={2}/> {authUser?.city || "Pakistan"}
                   </div>
                 </div>
                 <div className="head-actions">
@@ -3796,14 +3787,19 @@ export default function Outfield() {
             {/* Ground of the Week */}
             {groundOfWeek && (
               <div style={{padding:"12px 18px 0"}}>
-                <div className="gotw-card" onClick={()=>openGround({
-                  id:groundOfWeek.id, name:groundOfWeek.name, area:groundOfWeek.area||"", city:groundOfWeek.city||"",
-                  distance:"—", rating:groundOfWeek.rating||0, reviews:0, priceFrom:2000,
-                  sports:["cricket","football"], amenities:groundOfWeek.amenities?groundOfWeek.amenities.split(','):[],
-                  openFrom:groundOfWeek.open_from||"06:00", openTill:groundOfWeek.open_till||"23:00",
-                  description:groundOfWeek.description||"", img:groundOfWeek.img_url, latitude:groundOfWeek.latitude,
-                  longitude:groundOfWeek.longitude, customImage:null, isFacility:false, courts:[], slots:{"default":[]}
-                })}>
+                <div className="gotw-card" onClick={()=>{
+                  const full = dbGrounds.find(g=>g.id===groundOfWeek.id);
+                  if (full) { openGround(full); return; }
+                  openGround({
+                    id:groundOfWeek.id, name:groundOfWeek.name, area:groundOfWeek.area||"", city:groundOfWeek.city||"",
+                    distance:"—", rating:groundOfWeek.rating||0, reviews:0, priceFrom:0,
+                    sports:["cricket","football"], amenities:groundOfWeek.amenities?groundOfWeek.amenities.split(','):[],
+                    openFrom:groundOfWeek.open_from||"06:00", openTill:groundOfWeek.open_till||"23:00",
+                    description:groundOfWeek.description||"", img:groundOfWeek.img_url, latitude:groundOfWeek.latitude,
+                    longitude:groundOfWeek.longitude, advance_required:groundOfWeek.advance_required||0,
+                    customImage:null, isFacility:false, courts:[], slots:{"default":[]}
+                  });
+                }}>
                   {groundOfWeek.img_url
                     ? <img className="gotw-img" src={groundOfWeek.img_url} alt={groundOfWeek.name} onError={e=>{e.target.style.display="none";}}/>
                     : <div className="gotw-img" style={{background:"linear-gradient(135deg,#0a2a1a,#16a34a33)"}}/>
@@ -3908,9 +3904,8 @@ export default function Outfield() {
                 </div>
               )}
               <div className="glist">
-                {console.log('[render] dbGrounds:', dbGrounds.length, '| filtered:', filtered.length, '| ids:', filtered.map(g=>g.id))}
                 {filtered.map(g => {
-                  const slots = getSlots(g,"Mar 10");
+                  const slots = getSlots(g, date);
                   const freeN = slots.filter(s=>!s.booked).length;
                   const hasLfp = slots.some(s=>s.lfp);
                   return (
@@ -4292,9 +4287,9 @@ export default function Outfield() {
                           <div>
                             <div style={{fontSize:11,color:"var(--ink3)",fontWeight:600,marginBottom:8}}>📩 Challenge request received:</div>
                             <div className="tc-captain-row">
-                              <div className="tc-captain-av">M</div>
+                              <div className="tc-captain-av">{(authUser?.name||"?")[0].toUpperCase()}</div>
                               <div>
-                                <div className="tc-captain-name">Maaz's Team</div>
+                                <div className="tc-captain-name">{authUser?.name ? `${authUser.name}'s Team` : "Your Team"}</div>
                                 <div className="tc-phone">📞 {tc.phone} · Tap to call before accepting</div>
                               </div>
                             </div>
@@ -4638,7 +4633,7 @@ export default function Outfield() {
             pointerEvents: nav === 'map' ? 'auto' : 'none',
           }}>
             <MapScreen
-              grounds={dbGrounds.length > 0 ? dbGrounds : GROUNDS}
+              grounds={dbGrounds}
               darkMode={darkMode}
               isActive={nav === 'map'}
               onBookGround={(g) => { openGround(g); }}
@@ -4693,8 +4688,14 @@ export default function Outfield() {
                   </div>
                   <div className="detail-stat">
                     <div className="dstat-label">From</div>
-                    <div className="dstat-val">Rs {ground.priceFrom.toLocaleString()}</div>
+                    <div className="dstat-val">{ground.priceFrom > 0 ? `Rs ${ground.priceFrom.toLocaleString()}` : "—"}</div>
                   </div>
+                  {(ground.advance_required > 0) && (
+                    <div className="detail-stat" style={{borderColor:"#FED7AA"}}>
+                      <div className="dstat-label" style={{color:"#C2410C"}}>Advance</div>
+                      <div className="dstat-val" style={{color:"#C2410C"}}>Rs {ground.advance_required.toLocaleString()}</div>
+                    </div>
+                  )}
                 </div>
                 <div className="detail-tags-row">
                   {ground.amenities.map(a=>(
@@ -4732,8 +4733,8 @@ export default function Outfield() {
                       {ground.courts.map(c=>{
                         const sportsArr = Array.isArray(c.sports) ? c.sports : (c.sports||'').split(',').map(s=>s.trim()).filter(Boolean);
                         const sp = sportObj(sportsArr[0] || 'cricket');
-                        const pb = c.priceBase || c.price_base || 2000;
-                        const freeSlots = (c.slots?.["Mar 10"]||[]).filter(s=>!s.booked).length;
+                        const pb = c.priceBase || c.price_base || 0;
+                        const freeSlots = (c.slots?.[date]||[]).filter(s=>!s.booked).length;
                         const normC = {...c, sports: sportsArr, priceBase: pb, price_base: pb};
                         return (
                           <div key={c.id} className={`court-pick-card ${court?.id===c.id?"sel":""}`}
@@ -4923,7 +4924,7 @@ export default function Outfield() {
                 {[
                   ["Facility", ground.name],
                   ...(court ? [["Ground", court.name]] : []),
-                  ["Date", `${date}, 2026`],
+                  ["Date", `${date}, ${new Date().getFullYear()}`],
                   ["Time Slot", curSlot.time],
                   ["Location", ground.area],
                   ...(lfp ? [["Matchmaking","Alert ON"]] : []),
@@ -5062,7 +5063,7 @@ export default function Outfield() {
                 {[
                   [MapPin, ground.name],
                   [Clock, curSlot.time],
-                  [Calendar, `${date}, 2026`],
+                  [Calendar, `${date}, ${new Date().getFullYear()}`],
                   [Navigation, ground.area],
                 ].map(([I,v],i)=>(
                   <div key={i} className="sdb-row"><I size={13} color="var(--ink4)" strokeWidth={2}/>{v}</div>
@@ -5234,9 +5235,9 @@ export default function Outfield() {
                           <div>
                             <div style={{fontSize:11,color:"var(--ink3)",fontWeight:600,marginBottom:8}}>📩 Challenge request received:</div>
                             <div className="tc-captain-row">
-                              <div className="tc-captain-av">M</div>
+                              <div className="tc-captain-av">{(authUser?.name||"?")[0].toUpperCase()}</div>
                               <div>
-                                <div className="tc-captain-name">Maaz's Team</div>
+                                <div className="tc-captain-name">{authUser?.name ? `${authUser.name}'s Team` : "Your Team"}</div>
                                 <div className="tc-phone">📞 {tc.phone} · Tap to call before accepting</div>
                               </div>
                             </div>
@@ -5949,8 +5950,8 @@ export default function Outfield() {
                           .insert({
                             owner_id:      session.user.id,
                             name:          ownerFacilityName.trim() || "My Ground",
-                            area:          ownerArea.trim() || "Karachi",
-                            city:          authUser?.city || "Karachi",
+                            area:          ownerArea.trim() || "",
+                            city:          authUser?.city || "",
                             description:   ownerDescription.trim() || "",
                             open_from:     ownerOpenFrom || "06:00",
                             open_till:     ownerOpenTill || "23:00",
@@ -6623,7 +6624,7 @@ export default function Outfield() {
                       // Look up from dbGrounds first for full data, otherwise build a minimal object
                       const full = dbGrounds.find(dg=>dg.id===g.id) || activeGrounds.find(dg=>dg.id===g.id);
                       if (full) { openGround(full); }
-                      else { openGround({...g, sports:["cricket","football"], amenities:[], priceFrom:g.rating||2000, distance:"—", openFrom:"06:00", openTill:"23:00", isFacility:false, courts:[], slots:{"default":[]}}); }
+                      else { openGround({...g, sports:["cricket","football"], amenities:[], priceFrom:0, distance:"—", openFrom:"06:00", openTill:"23:00", isFacility:false, courts:[], slots:{"default":[]}}); }
                     }}>
                       <div className="gcard-img-wrap">
                         {g.img_url
