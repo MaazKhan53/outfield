@@ -134,6 +134,7 @@ CREATE TABLE IF NOT EXISTS favourites (id uuid default gen_random_uuid() primary
 CREATE TABLE IF NOT EXISTS feedback (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid REFERENCES auth.users(id), user_name text, user_email text, type text, message text NOT NULL, screen text, created_at timestamptz DEFAULT now());
 */
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { supabase } from './supabase';
 import { MapContainer, TileLayer, Marker, useMap, Circle } from 'react-leaflet';
 import L from 'leaflet';
@@ -1918,6 +1919,60 @@ function MapScreen({ grounds, darkMode, isActive, onBookGround, ownerId }) {
   );
 }
 
+// Admin component to list and unban softbanned players
+function AdminSoftbanPanel({ supabase, showToast }) {
+  const [bannedUsers, setBannedUsers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    const { data } = await supabase.from('users').select('id, name, phone, cancellation_count').eq('is_softbanned', true);
+    setBannedUsers(data || []);
+    setLoading(false);
+  };
+
+  const unban = async (userId) => {
+    const { error } = await supabase.rpc('admin_unban_user', { target_user_id: userId });
+    if (error) { showToast("Unban failed: " + error.message); return; }
+    setBannedUsers(prev => prev.filter(u => u.id !== userId));
+    showToast("Player unbanned ✓");
+  };
+
+  return (
+    <div style={{padding:"0 16px 16px"}}>
+      <div style={{borderTop:"1px solid var(--border)",paddingTop:14,marginTop:4}}>
+        <button
+          style={{width:"100%",padding:"10px 0",borderRadius:10,background:"#FEF2F2",color:"#DC2626",fontWeight:700,fontSize:12,border:"1px solid #FECACA",cursor:"pointer"}}
+          onClick={()=>{ if(!expanded){load();} setExpanded(e=>!e); }}>
+          {expanded ? "Hide" : "Manage"} Softbanned Players
+        </button>
+        {expanded && (
+          <div style={{marginTop:10}}>
+            {loading ? (
+              <div style={{textAlign:"center",padding:16,color:"var(--ink4)",fontSize:12}}>Loading…</div>
+            ) : bannedUsers.length === 0 ? (
+              <div style={{textAlign:"center",padding:16,fontSize:12,color:"var(--ink4)"}}>No softbanned players.</div>
+            ) : bannedUsers.map(u => (
+              <div key={u.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"var(--card)",border:"1px solid var(--border)",borderRadius:10,padding:"10px 12px",marginBottom:8}}>
+                <div>
+                  <div style={{fontSize:12,fontWeight:700,color:"var(--ink1)"}}>{u.name || "Unknown"}</div>
+                  <div style={{fontSize:10,color:"var(--ink4)"}}>{u.phone || u.id.slice(0,8)} · {u.cancellation_count} cancellations</div>
+                </div>
+                <button
+                  style={{padding:"6px 12px",borderRadius:8,background:"#16A34A",color:"#fff",fontWeight:700,fontSize:11,border:"none",cursor:"pointer"}}
+                  onClick={()=>unban(u.id)}>
+                  Unban
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Outfield() {
   const [screen, setScreen]   = useState("splash");
   const [nav, setNav]         = useState("home");
@@ -2038,6 +2093,8 @@ export default function Outfield() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications]         = useState([]);
   const [notifLoading, setNotifLoading]           = useState(false);
+  // In-app booking confirmation notifications
+  const [confirmedNotifications, setConfirmedNotifications] = useState([]);
   // Feature: city filter
   const [filterCity, setFilterCity]               = useState("all");
   // Feature: contact us sheet
@@ -2294,9 +2351,16 @@ export default function Outfield() {
       .from('bookings')
       .select('*, courts(name, grounds(name))')
       .eq('player_id', session.user.id)
-      .order('created_at', { ascending: false })
-      .then(({ data }) => {
-        if (data) setBookingHistory(data);
+      .order('id', { ascending: false })
+      .then(({ data, error }) => {
+        if (error) console.error('[bookingHistory] fetch error:', error);
+        if (data) {
+          setBookingHistory(data);
+          // Check for newly confirmed bookings not yet shown to user
+          const notified = JSON.parse(localStorage.getItem('otf-notified') || '[]');
+          const newConfirmed = data.filter(b => b.status === 'confirmed' && !notified.includes(b.id));
+          if (newConfirmed.length > 0) setConfirmedNotifications(newConfirmed);
+        }
         setBookingHistoryLoading(false);
       });
   }, [screen, session]);
@@ -2312,7 +2376,7 @@ export default function Outfield() {
     setAdminLoading(true);
     supabase
       .from('bookings')
-      .select('*, users!player_id(name, phone), courts!court_id(name, grounds!ground_id(name, contact_phone, advance_required, owner_id))')
+      .select('*, users!player_id(name, phone, email), courts!court_id(name, grounds!ground_id(name, contact_phone, advance_required, owner_id))')
       .eq('status', 'pending_verification')
       .order('created_at', { ascending: false })
       .then(({ data, error }) => {
@@ -2710,6 +2774,42 @@ export default function Outfield() {
     return age;
   };
 
+  // Send booking confirmation email via Resend API
+  const sendBookingConfirmEmail = async ({ toEmail, toName, groundName, bookingDate, startTime, endTime, bookingRef, totalPrice, advancePaid, payAtVenue }) => {
+    const key = import.meta.env.VITE_RESEND_API_KEY;
+    if (!key || !toEmail) return;
+    try {
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: 'Outfield <onboarding@resend.dev>',
+          to: [toEmail],
+          reply_to: 'outfield.application@gmail.com',
+          subject: `Booking Confirmed — ${groundName} on ${bookingDate}`,
+          html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;background:#f9fafb;padding:24px;border-radius:12px;">
+            <h2 style="color:#16a34a;margin-bottom:4px">Booking Confirmed ✓</h2>
+            <p style="color:#374151;margin-top:0">Hi ${toName},</p>
+            <p style="color:#374151">Your booking at <strong>${groundName}</strong> has been confirmed.</p>
+            <table style="width:100%;border-collapse:collapse;margin:16px 0;background:#fff;border-radius:8px;overflow:hidden;">
+              <tr style="background:#f3f4f6"><td style="padding:10px 14px;font-size:12px;color:#6b7280;font-weight:600">Booking Ref</td><td style="padding:10px 14px;font-size:13px;font-weight:700;color:#111827">${bookingRef}</td></tr>
+              <tr><td style="padding:10px 14px;font-size:12px;color:#6b7280;font-weight:600">Ground</td><td style="padding:10px 14px;font-size:13px;color:#111827">${groundName}</td></tr>
+              <tr style="background:#f3f4f6"><td style="padding:10px 14px;font-size:12px;color:#6b7280;font-weight:600">Date</td><td style="padding:10px 14px;font-size:13px;color:#111827">${bookingDate}</td></tr>
+              <tr><td style="padding:10px 14px;font-size:12px;color:#6b7280;font-weight:600">Time Slot</td><td style="padding:10px 14px;font-size:13px;color:#111827">${startTime} – ${endTime}</td></tr>
+              <tr style="background:#f3f4f6"><td style="padding:10px 14px;font-size:12px;color:#6b7280;font-weight:600">Total Amount</td><td style="padding:10px 14px;font-size:13px;font-weight:700;color:#111827">Rs ${(totalPrice||0).toLocaleString()}</td></tr>
+              <tr><td style="padding:10px 14px;font-size:12px;color:#6b7280;font-weight:600">Amount Paid</td><td style="padding:10px 14px;font-size:13px;color:#111827">Rs ${(advancePaid||0).toLocaleString()}</td></tr>
+              <tr style="background:#ecfdf5"><td style="padding:10px 14px;font-size:12px;color:#059669;font-weight:600">Remaining at Venue</td><td style="padding:10px 14px;font-size:13px;font-weight:700;color:#059669">Rs ${(payAtVenue||0).toLocaleString()}</td></tr>
+            </table>
+            <p style="color:#374151;font-size:12px">Just show up and play! For any issues contact <a href="mailto:outfield.application@gmail.com" style="color:#16a34a">outfield.application@gmail.com</a></p>
+            <p style="color:#9ca3af;font-size:11px;margin-top:20px">— Outfield Team</p>
+          </div>`,
+        }),
+      });
+    } catch (e) {
+      console.warn('[email] Failed to send confirmation:', e.message);
+    }
+  };
+
   const handleSignUp = async () => {
     if (!authName.trim())   { setAuthError("Full name is required."); return; }
     if (!authPhone.trim())  { setAuthError("Phone number is required."); return; }
@@ -2742,7 +2842,8 @@ export default function Outfield() {
         role: authRole,
         city: authCity,
         dob: authDob,
-        age: calcAge(authDob)
+        age: calcAge(authDob),
+        email: data.user.email,
       });
       if (profileErr) {
         showToast("Account created but profile save failed: " + profileErr.message);
@@ -2851,25 +2952,54 @@ export default function Outfield() {
     return ms > 0 ? Math.ceil(ms / (1000 * 60 * 60 * 24)) : 0;
   };
 
-  // Feature 2 — cancel booking with escalating penalty
+  // Feature 2 — cancel booking with escalating penalty and cancellation count
   const handleCancelBooking = async (id) => {
     const booking = [...(bookingHistory || []), ...(myBookings || [])].find(b => b.id === id);
+
+    // Only allow cancelling confirmed future bookings
+    if (!booking || booking.status !== 'confirmed' || !isFutureBooking(booking.booking_date)) {
+      setCancelConfirmId(null);
+      showToast("This booking cannot be cancelled");
+      return;
+    }
+
     const late = isCancelLate(booking);
 
-    await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', id);
+    const { error: cancelErr } = await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', id);
+    if (cancelErr) {
+      showToast("Failed to cancel: " + cancelErr.message);
+      return;
+    }
+
     setBookingHistory(prev => prev.map(b => b.id === id ? {...b, status: 'cancelled'} : b));
     setMyBookings(prev => prev.map(b => b.id === id ? {...b, status: 'cancelled'} : b));
     setCancelConfirmId(null);
 
-    if (late && session?.user) {
-      const strikes = (authUser?.cancel_strikes || 0) + 1;
-      const banDays = BAN_DAYS[Math.min(strikes - 1, BAN_DAYS.length - 1)];
-      const banUntil = new Date(Date.now() + banDays * 24 * 60 * 60 * 1000).toISOString();
-      await supabase.from('users')
-        .update({ cancel_strikes: strikes, ban_until: banUntil })
-        .eq('id', session.user.id);
-      setAuthUser(prev => ({...prev, cancel_strikes: strikes, ban_until: banUntil}));
-      showToast(`Cancelled. Late cancellation — ${banDays}-day booking ban applied.`);
+    if (session?.user) {
+      const newCount = (authUser?.cancellation_count || 0) + 1;
+      const nowBanned = newCount > 2;
+      const updateData = { cancellation_count: newCount };
+      if (nowBanned) updateData.is_softbanned = true;
+
+      if (late) {
+        const strikes = (authUser?.cancel_strikes || 0) + 1;
+        const banDays = BAN_DAYS[Math.min(strikes - 1, BAN_DAYS.length - 1)];
+        const banUntil = new Date(Date.now() + banDays * 24 * 60 * 60 * 1000).toISOString();
+        updateData.cancel_strikes = strikes;
+        updateData.ban_until = banUntil;
+      }
+
+      await supabase.from('users').update(updateData).eq('id', session.user.id);
+      setAuthUser(prev => ({...prev, ...updateData}));
+
+      if (nowBanned) {
+        showToast("Booking cancelled. You have been temporarily restricted due to multiple cancellations.");
+      } else if (late) {
+        const banDays = BAN_DAYS[Math.min(updateData.cancel_strikes - 1, BAN_DAYS.length - 1)];
+        showToast(`Cancelled. Late cancellation — ${banDays}-day booking ban applied.`);
+      } else {
+        showToast("Booking cancelled");
+      }
     } else {
       showToast("Booking cancelled");
     }
@@ -2931,6 +3061,10 @@ export default function Outfield() {
 
   const handleConfirmBooking = async () => {
     if (!curSlot || !ground) return;
+    if (authUser?.is_softbanned) {
+      showToast("You have been temporarily restricted due to multiple cancellations. Contact outfield.application@gmail.com to appeal.");
+      return;
+    }
     const daysLeft = getBanDaysLeft();
     if (daysLeft > 0) {
       showToast(`Booking ban active — ${daysLeft} day${daysLeft !== 1 ? 's' : ''} remaining.`);
@@ -2976,6 +3110,22 @@ export default function Outfield() {
       }
       setLastBookingPending(needsAdvance);
       setTxnId("");
+      // Send confirmation email for directly confirmed bookings (no advance needed)
+      if (!needsAdvance && session?.user?.email) {
+        const totalP = (curSlot.price || 0) * playerCount;
+        sendBookingConfirmEmail({
+          toEmail: session.user.email,
+          toName: authUser?.name || 'Player',
+          groundName: ground.name,
+          bookingDate: date,
+          startTime: timeFrom,
+          endTime: timeTo,
+          bookingRef: ref,
+          totalPrice: totalP,
+          advancePaid: 0,
+          payAtVenue: totalP,
+        });
+      }
       // Mark slot as booked immediately in local state
       setRealSlots(prev => prev.map(s => s.startTime === timeFrom ? {...s, booked: true, lfp} : s));
       setBookedSlotKeys(prev => new Set([...prev, `${courtId}_${date}_${timeFrom}`]));
@@ -3514,6 +3664,7 @@ export default function Outfield() {
               ) : adminBookings.map((b, i) => {
                 const playerName    = b.users?.name || "Unknown player";
                 const playerPhone   = b.users?.phone || "—";
+                const playerEmail   = b.users?.email || null;
                 const courtName     = b.courts?.name || "—";
                 const groundName    = b.courts?.grounds?.name || "—";
                 const ownerPhone    = b.courts?.grounds?.contact_phone || "—";
@@ -3553,6 +3704,21 @@ export default function Outfield() {
                           if(error){ showToast("Error: "+error.message); return; }
                           setAdminBookings(prev=>prev.filter(x=>x.id!==b.id));
                           showToast("Booking confirmed ✓");
+                          // Send confirmation email to player
+                          if (playerEmail) {
+                            sendBookingConfirmEmail({
+                              toEmail: playerEmail,
+                              toName: playerName,
+                              groundName,
+                              bookingDate: b.booking_date,
+                              startTime: b.start_time,
+                              endTime: b.end_time,
+                              bookingRef: b.booking_ref || '—',
+                              totalPrice: totalPrice,
+                              advancePaid: advance,
+                              payAtVenue: totalPrice - advance,
+                            });
+                          }
                         }}>
                         ✓ Confirm
                       </button>
@@ -3566,6 +3732,8 @@ export default function Outfield() {
                 );
               })}
             </div>
+            {/* ── Softbanned players management ── */}
+            <AdminSoftbanPanel supabase={supabase} showToast={showToast}/>
           </div>
         )}
         {authUser?.role === "owner" && (() => {
@@ -4352,88 +4520,8 @@ export default function Outfield() {
                 </div>
               </div>
             )}
-            {editGroundModal && (
-              <div className="cancel-overlay" onClick={e=>{if(e.target.className==="cancel-overlay")setEditGroundModal(null);}}>
-                <div className="cancel-sheet" style={{paddingBottom:32,maxHeight:"85vh",overflowY:"auto"}}>
-                  <div className="cancel-title" style={{marginBottom:4}}>Edit Ground</div>
-                  <div style={{fontSize:12,color:"var(--ink4)",marginBottom:16}}>{editGroundModal.name}</div>
-                  {[
-                    ["Ground Name", editGroundName, setEditGroundName, "text", "e.g. DHA Sports Complex"],
-                    ["Area / Neighbourhood", editGroundArea, setEditGroundArea, "text", "e.g. DHA Phase 5"],
-                    ["Contact Phone", editGroundPhone, setEditGroundPhone, "tel", "03XX-XXXXXXX"],
-                    ["Advance Required (Rs)", editGroundAdvance, setEditGroundAdvance, "number", "e.g. 1000 (0 = no advance)"],
-                  ].map(([lbl, val, setter, type, ph]) => (
-                    <div key={lbl} style={{marginBottom:12}}>
-                      <label style={{fontSize:12,fontWeight:600,color:"var(--ink2)",display:"block",marginBottom:5}}>{lbl}</label>
-                      <input className="finput" type={type} placeholder={ph} value={val} onChange={e=>setter(e.target.value)}
-                        style={{width:"100%",boxSizing:"border-box"}}/>
-                    </div>
-                  ))}
-                  <div style={{display:"flex",gap:8,marginBottom:12}}>
-                    <div style={{flex:1}}>
-                      <label style={{fontSize:12,fontWeight:600,color:"var(--ink2)",display:"block",marginBottom:5}}>Open From</label>
-                      <input className="finput" type="time" value={editGroundOpenFrom} onChange={e=>setEditGroundOpenFrom(e.target.value)}/>
-                    </div>
-                    <div style={{flex:1}}>
-                      <label style={{fontSize:12,fontWeight:600,color:"var(--ink2)",display:"block",marginBottom:5}}>Open Till</label>
-                      <input className="finput" type="time" value={editGroundOpenTill} onChange={e=>setEditGroundOpenTill(e.target.value)}/>
-                    </div>
-                  </div>
-                  <div style={{fontSize:10,color:"var(--ink4)",background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:8,padding:"8px 10px",marginBottom:16,lineHeight:1.5}}>
-                    Setting Advance Required to a number &gt; 0 enables the JazzCash payment flow for this ground. Players will be asked to send that amount to <strong>0329-0351363</strong> before their booking is confirmed.
-                  </div>
-                  <div className="cancel-actions">
-                    <button className="cancel-no" onClick={()=>setEditGroundModal(null)}>Cancel</button>
-                    <button className="cancel-yes"
-                      disabled={editGroundSaving}
-                      style={{opacity:editGroundSaving?.5:1}}
-                      onClick={async()=>{
-                        setEditGroundSaving(true);
-                        const {error} = await supabase.from('grounds').update({
-                          name:             editGroundName.trim()||editGroundModal.name,
-                          area:             editGroundArea.trim()||editGroundModal.area,
-                          open_from:        editGroundOpenFrom||editGroundModal.open_from,
-                          open_till:        editGroundOpenTill||editGroundModal.open_till,
-                          contact_phone:    editGroundPhone.trim(),
-                          advance_required: parseInt(editGroundAdvance)||0,
-                        }).eq('id', editGroundModal.id);
-                        setEditGroundSaving(false);
-                        if(error){ showToast("Save failed: "+error.message); return; }
-                        setOwnerDashRefreshTick(t=>t+1);
-                        setEditGroundModal(null);
-                        showToast("Ground updated ✓");
-                      }}>
-                      {editGroundSaving ? "Saving…" : "Save Changes"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-            {adminRejectId && (
-              <div className="cancel-overlay" onClick={e=>{if(e.target.className==="cancel-overlay")setAdminRejectId(null);}}>
-                <div className="cancel-sheet">
-                  <div className="cancel-title">Reject this booking?</div>
-                  <div className="cancel-sub" style={{marginBottom:12}}>Player will see: "Payment not verified — contact outfield.application@gmail.com"</div>
-                  <textarea
-                    placeholder="Reason (optional, for internal notes)"
-                    value={adminRejectReason}
-                    onChange={e=>setAdminRejectReason(e.target.value)}
-                    style={{width:"100%",borderRadius:10,border:"1px solid var(--border)",padding:"10px 12px",fontSize:12,color:"var(--ink1)",background:"var(--card)",fontFamily:"Inter,sans-serif",resize:"none",marginBottom:12,boxSizing:"border-box"}}
-                    rows={3}
-                  />
-                  <div className="cancel-actions">
-                    <button className="cancel-no" onClick={()=>setAdminRejectId(null)}>Go back</button>
-                    <button className="cancel-yes" style={{background:"#DC2626"}} onClick={async()=>{
-                      const {error} = await supabase.from('bookings').update({status:"rejected"}).eq('id',adminRejectId);
-                      if(error){ showToast("Error: "+error.message); return; }
-                      setAdminBookings(prev=>prev.filter(x=>x.id!==adminRejectId));
-                      setAdminRejectId(null);
-                      showToast("Booking rejected.");
-                    }}>Reject</button>
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* editGroundModal and adminRejectId are rendered via portals below — they were
+                here originally but are now portal-mounted to escape CSS transform containment. */}
             <div className="prof-head">
               <div className="prof-glow"/>
               <button className="prof-edit-btn"
@@ -4861,7 +4949,10 @@ export default function Outfield() {
                               <Users size={9} strokeWidth={2}/> {spotsLeft} spot{spotsLeft!==1?"s":""} left
                             </div>
                             <button className={`join-btn ${jnd?"done":""}`}
-                              onClick={e=>{e.stopPropagation();const nv=!jnd;setJoined(p=>({...p,[jk]:nv}));showToast(nv?"Request sent! You'll hear back soon.":"Request cancelled");}}>
+                              onClick={e=>{e.stopPropagation();
+                                if (authUser?.is_softbanned) { showToast("You have been temporarily restricted due to multiple cancellations. Contact outfield.application@gmail.com to appeal."); return; }
+                                const nv=!jnd;setJoined(p=>({...p,[jk]:nv}));showToast(nv?"Request sent! You'll hear back soon.":"Request cancelled");
+                              }}>
                               {jnd ? <><Check size={10} strokeWidth={2.5}/>Requested</> : <><UserPlus size={10} strokeWidth={2}/>I'm in!</>}
                             </button>
                           </>
@@ -5184,7 +5275,10 @@ export default function Outfield() {
                         {authUser?.role !== 'owner' ? (<>
                           <button className="mc-chat-btn" onClick={()=>startOrOpenChat({hostId:s.hostId||session?.user?.id,hostName:s.bookedBy||'Host',groundName:s.groundName,sport:s.sport,date:s.dateLabel,time:s.time,type:'players'})}>💬 Chat</button>
                           <button className={`mc-join ${jnd?"done":""}`}
-                            onClick={()=>{const nv=!jnd;setJoined(p=>({...p,[jk]:nv}));showToast(nv?"Request sent!":"Request cancelled");}}
+                            onClick={()=>{
+                              if (authUser?.is_softbanned) { showToast("You have been temporarily restricted due to multiple cancellations. Contact outfield.application@gmail.com to appeal."); return; }
+                              const nv=!jnd;setJoined(p=>({...p,[jk]:nv}));showToast(nv?"Request sent!":"Request cancelled");
+                            }}
                             disabled={spotsLeft<=0&&!jnd}>
                             {jnd ? <><Check size={11} strokeWidth={2.5}/>Requested</> : <><UserPlus size={11} strokeWidth={2}/>I'm in!</>}
                           </button>
@@ -6863,6 +6957,127 @@ export default function Outfield() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* ═══ PORTAL: Edit Ground Modal (outside CSS transform container) ═══ */}
+      {editGroundModal && createPortal(
+        <div className="cancel-overlay" onClick={e=>{if(e.target.className==="cancel-overlay")setEditGroundModal(null);}}>
+          <div className="cancel-sheet" style={{paddingBottom:32,maxHeight:"85vh",overflowY:"auto"}}>
+            <div className="cancel-title" style={{marginBottom:4}}>Edit Ground</div>
+            <div style={{fontSize:12,color:"var(--ink4)",marginBottom:16}}>{editGroundModal.name}</div>
+            {[
+              ["Ground Name", editGroundName, setEditGroundName, "text", "e.g. DHA Sports Complex"],
+              ["Area / Neighbourhood", editGroundArea, setEditGroundArea, "text", "e.g. DHA Phase 5"],
+              ["Contact Phone", editGroundPhone, setEditGroundPhone, "tel", "03XX-XXXXXXX"],
+              ["Advance Required (Rs)", editGroundAdvance, setEditGroundAdvance, "number", "e.g. 1000 (0 = no advance)"],
+            ].map(([lbl, val, setter, type, ph]) => (
+              <div key={lbl} style={{marginBottom:12}}>
+                <label style={{fontSize:12,fontWeight:600,color:"var(--ink2)",display:"block",marginBottom:5}}>{lbl}</label>
+                <input className="finput" type={type} placeholder={ph} value={val} onChange={e=>setter(e.target.value)}
+                  style={{width:"100%",boxSizing:"border-box"}}/>
+              </div>
+            ))}
+            <div style={{display:"flex",gap:8,marginBottom:12}}>
+              <div style={{flex:1}}>
+                <label style={{fontSize:12,fontWeight:600,color:"var(--ink2)",display:"block",marginBottom:5}}>Open From</label>
+                <input className="finput" type="time" value={editGroundOpenFrom} onChange={e=>setEditGroundOpenFrom(e.target.value)}/>
+              </div>
+              <div style={{flex:1}}>
+                <label style={{fontSize:12,fontWeight:600,color:"var(--ink2)",display:"block",marginBottom:5}}>Open Till</label>
+                <input className="finput" type="time" value={editGroundOpenTill} onChange={e=>setEditGroundOpenTill(e.target.value)}/>
+              </div>
+            </div>
+            <div style={{fontSize:10,color:"var(--ink4)",background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:8,padding:"8px 10px",marginBottom:16,lineHeight:1.5}}>
+              Setting Advance Required to a number &gt; 0 enables the JazzCash payment flow for this ground. Players will be asked to send that amount to <strong>0329-0351363</strong> before their booking is confirmed.
+            </div>
+            <div className="cancel-actions">
+              <button className="cancel-no" onClick={()=>setEditGroundModal(null)}>Cancel</button>
+              <button className="cancel-yes"
+                disabled={editGroundSaving}
+                style={{opacity:editGroundSaving ? 0.5 : 1}}
+                onClick={async()=>{
+                  setEditGroundSaving(true);
+                  const {error} = await supabase.from('grounds').update({
+                    name:             editGroundName.trim()||editGroundModal.name,
+                    area:             editGroundArea.trim()||editGroundModal.area,
+                    open_from:        editGroundOpenFrom||editGroundModal.open_from,
+                    open_till:        editGroundOpenTill||editGroundModal.open_till,
+                    contact_phone:    editGroundPhone.trim(),
+                    advance_required: parseInt(editGroundAdvance)||0,
+                  }).eq('id', editGroundModal.id);
+                  setEditGroundSaving(false);
+                  if(error){ showToast("Save failed: "+error.message); return; }
+                  setOwnerDashRefreshTick(t=>t+1);
+                  setEditGroundModal(null);
+                  showToast("Ground updated ✓");
+                }}>
+                {editGroundSaving ? "Saving…" : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ═══ PORTAL: Admin Reject Modal (outside CSS transform container) ═══ */}
+      {adminRejectId && createPortal(
+        <div className="cancel-overlay" onClick={e=>{if(e.target.className==="cancel-overlay")setAdminRejectId(null);}}>
+          <div className="cancel-sheet">
+            <div className="cancel-title">Reject this booking?</div>
+            <div className="cancel-sub" style={{marginBottom:12}}>Player will see: "Payment not verified — contact outfield.application@gmail.com"</div>
+            <textarea
+              placeholder="Reason (optional, for internal notes)"
+              value={adminRejectReason}
+              onChange={e=>setAdminRejectReason(e.target.value)}
+              style={{width:"100%",borderRadius:10,border:"1px solid var(--border)",padding:"10px 12px",fontSize:12,color:"var(--ink1)",background:"var(--card)",fontFamily:"Inter,sans-serif",resize:"none",marginBottom:12,boxSizing:"border-box"}}
+              rows={3}
+            />
+            <div className="cancel-actions">
+              <button className="cancel-no" onClick={()=>setAdminRejectId(null)}>Go back</button>
+              <button className="cancel-yes" style={{background:"#DC2626"}} onClick={async()=>{
+                const {error} = await supabase.from('bookings').update({status:"rejected"}).eq('id',adminRejectId);
+                if(error){ showToast("Error: "+error.message); return; }
+                setAdminBookings(prev=>prev.filter(x=>x.id!==adminRejectId));
+                setAdminRejectId(null);
+                showToast("Booking rejected.");
+              }}>Reject</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ═══ SOFTBAN BANNER ═══ */}
+      {authUser?.is_softbanned && session && createPortal(
+        <div style={{position:'fixed',top:0,left:'50%',transform:'translateX(-50%)',width:'100%',maxWidth:430,zIndex:9998,background:'#DC2626',color:'#fff',padding:'12px 18px',fontSize:12,fontWeight:600,lineHeight:1.5,textAlign:'center',boxShadow:'0 4px 16px rgba(0,0,0,.3)'}}>
+          You have been temporarily restricted due to multiple cancellations.{' '}
+          <a href="mailto:outfield.application@gmail.com" style={{color:'#FEF2F2',textDecoration:'underline'}}>Contact us to appeal.</a>
+        </div>,
+        document.body
+      )}
+
+      {/* ═══ IN-APP BOOKING CONFIRMED NOTIFICATIONS ═══ */}
+      {confirmedNotifications.length > 0 && createPortal(
+        <div style={{position:'fixed',bottom:88,left:'50%',transform:'translateX(-50%)',width:'calc(100% - 36px)',maxWidth:394,zIndex:9997,display:'flex',flexDirection:'column',gap:8}}>
+          {confirmedNotifications.map(b => {
+            const groundName = b.courts?.grounds?.name || b.courts?.name || 'Ground';
+            return (
+              <div key={b.id} style={{background:'#16A34A',color:'#fff',borderRadius:14,padding:'12px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',boxShadow:'0 4px 16px rgba(0,0,0,.25)'}}>
+                <div>
+                  <div style={{fontSize:12,fontWeight:700}}>Booking Confirmed!</div>
+                  <div style={{fontSize:11,opacity:.9,marginTop:2}}>{groundName} on {b.booking_date}</div>
+                </div>
+                <button style={{background:'rgba(255,255,255,.2)',border:'none',color:'#fff',borderRadius:100,width:28,height:28,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flexShrink:0,marginLeft:10}}
+                  onClick={()=>{
+                    const notified = JSON.parse(localStorage.getItem('otf-notified') || '[]');
+                    localStorage.setItem('otf-notified', JSON.stringify([...notified, b.id]));
+                    setConfirmedNotifications(prev => prev.filter(x => x.id !== b.id));
+                  }}>✕</button>
+              </div>
+            );
+          })}
+        </div>,
+        document.body
       )}
     </>
   );

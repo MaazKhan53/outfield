@@ -19,13 +19,30 @@ CREATE TABLE IF NOT EXISTS users (
   created_at     timestamptz DEFAULT now()
 );
 ALTER TABLE users ADD COLUMN IF NOT EXISTS payment_number text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS cancellation_count integer DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_softbanned boolean DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS cancel_strikes integer DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_until timestamptz;
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "users_select" ON users;
 DROP POLICY IF EXISTS "users_insert" ON users;
 DROP POLICY IF EXISTS "users_update" ON users;
 CREATE POLICY "users_select" ON users FOR SELECT USING (true);
 CREATE POLICY "users_insert" ON users FOR INSERT WITH CHECK (auth.uid() = id);
+-- Players update own row; admins can update is_softbanned on any row via RPC below.
 CREATE POLICY "users_update" ON users FOR UPDATE USING (auth.uid() = id);
+
+-- ── Admin RPC: unban a player (runs with SECURITY DEFINER to bypass RLS) ──────
+CREATE OR REPLACE FUNCTION admin_unban_user(target_user_id uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  IF (SELECT role FROM users WHERE id = auth.uid()) != 'admin' THEN
+    RAISE EXCEPTION 'Not authorized';
+  END IF;
+  UPDATE users SET is_softbanned = false, cancellation_count = 0 WHERE id = target_user_id;
+END;
+$$;
 
 -- Create a profile row for any auth user who signed up before this table existed.
 -- Runs safely on every re-run — inserts only missing rows.
