@@ -2095,6 +2095,19 @@ export default function Outfield() {
   const [notifLoading, setNotifLoading]           = useState(false);
   // In-app booking confirmation notifications
   const [confirmedNotifications, setConfirmedNotifications] = useState([]);
+  // Owner: all bookings (initial load + real-time)
+  const [ownerAllBookings, setOwnerAllBookings] = useState([]);
+  // Owner: court id → { name, ground_id } lookup
+  const [ownerCourtMap, setOwnerCourtMap] = useState({});
+  // Owner dashboard section: "grounds" | "bookings"
+  const [ownerDashViewSection, setOwnerDashViewSection] = useState("grounds");
+  // Owner: new (unseen) booking notification count
+  const [ownerNewNotifCount, setOwnerNewNotifCount] = useState(0);
+  // Owner: ground slot view modal
+  const [ownerGroundSlotView, setOwnerGroundSlotView] = useState(null); // { ground, courts }
+  const [ownerSlotViewDate, setOwnerSlotViewDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [ownerSlotViewData, setOwnerSlotViewData] = useState([]); // bookings for selected date
+  const [ownerSlotViewLoading, setOwnerSlotViewLoading] = useState(false);
   // Feature: city filter
   const [filterCity, setFilterCity]               = useState("all");
   // Feature: contact us sheet
@@ -2300,21 +2313,48 @@ export default function Outfield() {
     );
   }, []);
 
-  // Fetch owner dashboard — grounds only (no nested joins)
+  // Fetch owner dashboard — grounds + all bookings for those grounds
   useEffect(() => {
     if (authUser?.role !== "owner" || !session?.user) return;
     setOwnerDashLoading(true);
-    supabase
-      .from('grounds')
-      .select('*')
-      .eq('owner_id', session.user.id)
-      .order('created_at', { ascending: false })
-      .then(({ data, error }) => {
-        if (error) { console.error('Owner grounds fetch error:', error); setOwnerDashLoading(false); return; }
-        const gList = data || [];
-        setOwnerGrounds(gList);
-        setOwnerDashLoading(false);
-      });
+    (async () => {
+      const { data: gData, error: gErr } = await supabase
+        .from('grounds')
+        .select('*')
+        .eq('owner_id', session.user.id)
+        .order('created_at', { ascending: false });
+      if (gErr) { console.error('Owner grounds fetch error:', gErr); setOwnerDashLoading(false); return; }
+      const gList = gData || [];
+      setOwnerGrounds(gList);
+
+      if (gList.length > 0) {
+        const groundIds = gList.map(g => g.id);
+        const { data: courtData } = await supabase
+          .from('courts').select('id, name, ground_id').in('ground_id', groundIds);
+        const courtIds = (courtData || []).map(c => c.id);
+        // Build court lookup map
+        const cmap = {};
+        (courtData || []).forEach(c => { cmap[c.id] = c; });
+        setOwnerCourtMap(cmap);
+        if (courtIds.length > 0) {
+          const { data: bkData } = await supabase
+            .from('bookings')
+            .select('*, users!player_id(name, phone)')
+            .in('court_id', courtIds)
+            .order('created_at', { ascending: false });
+          setOwnerAllBookings(bkData || []);
+          setOwnerBookings(bkData || []);
+        }
+        // Fetch unseen notification count from announcements
+        const { count } = await supabase
+          .from('announcements')
+          .select('id', { count: 'exact', head: true })
+          .eq('owner_id', session.user.id)
+          .eq('is_seen', false);
+        setOwnerNewNotifCount(count || 0);
+      }
+      setOwnerDashLoading(false);
+    })();
   }, [authUser, session, ownerDashRefreshTick]);
 
   // Real-time: owner dashboard refreshes when any new booking lands on their courts
@@ -2336,33 +2376,61 @@ export default function Outfield() {
             .single();
           if (courtRow) {
             setOwnerBookings(prev => [...prev, b]);
+            setOwnerAllBookings(prev => [...prev, b]);
             setOwnerDashRefreshTick(t => t + 1);
+            // Increment unseen notification count
+            setOwnerNewNotifCount(n => n + 1);
+            // If owner has slot view open for this court's date, update it
+            setOwnerSlotViewData(prev => {
+              if (prev.some(x => x.id === b.id)) return prev;
+              return [...prev, b];
+            });
           }
         })
       .subscribe();
     return () => supabase.removeChannel(channel);
   }, [authUser?.role, session?.user?.id]);
 
-  // Fetch booking history when profile or bookingHistory screen is active
+  // Fetch booking history when profile or bookingHistory screen is active (two-step to avoid nested join 400)
   useEffect(() => {
     if (!["profile","bookingHistory"].includes(screen) || !session?.user) return;
     setBookingHistoryLoading(true);
-    supabase
-      .from('bookings')
-      .select('*, courts(name, grounds(name))')
-      .eq('player_id', session.user.id)
-      .order('id', { ascending: false })
-      .then(({ data, error }) => {
-        if (error) console.error('[bookingHistory] fetch error:', error);
-        if (data) {
-          setBookingHistory(data);
-          // Check for newly confirmed bookings not yet shown to user
-          const notified = JSON.parse(localStorage.getItem('otf-notified') || '[]');
-          const newConfirmed = data.filter(b => b.status === 'confirmed' && !notified.includes(b.id));
-          if (newConfirmed.length > 0) setConfirmedNotifications(newConfirmed);
+    (async () => {
+      const { data: bks, error } = await supabase
+        .from('bookings')
+        .select('*')
+        .eq('player_id', session.user.id)
+        .order('id', { ascending: false });
+      if (error) { console.error('[bookingHistory] fetch error:', error); setBookingHistoryLoading(false); return; }
+      const bookings = bks || [];
+      // Fetch court+ground names separately (no nested join — no FK constraints in DB)
+      const courtIds = [...new Set(bookings.map(b => b.court_id).filter(Boolean))];
+      let courtMap = {};
+      if (courtIds.length > 0) {
+        const { data: courts } = await supabase
+          .from('courts').select('id, name, ground_id').in('id', courtIds);
+        const groundIds = [...new Set((courts||[]).map(c => c.ground_id).filter(Boolean))];
+        let groundMap = {};
+        if (groundIds.length > 0) {
+          const { data: grounds } = await supabase
+            .from('grounds').select('id, name').in('id', groundIds);
+          (grounds||[]).forEach(g => { groundMap[g.id] = g; });
         }
-        setBookingHistoryLoading(false);
-      });
+        (courts || []).forEach(c => {
+          courtMap[c.id] = { ...c, grounds: groundMap[c.ground_id] || null };
+        });
+      }
+      const enriched = bookings.map(b => ({
+        ...b,
+        courts: b.court_id ? (courtMap[b.court_id] || null) : null,
+      }));
+      setBookingHistory(enriched);
+      // Check for newly confirmed bookings not yet shown to user
+      const notified = JSON.parse(localStorage.getItem('otf-notified') || '[]');
+      const newConfirmed = enriched.filter(b => b.status === 'confirmed' && !notified.includes(b.id));
+      if (newConfirmed.length > 0) setConfirmedNotifications(newConfirmed);
+      setBookingHistoryLoading(false);
+    })();
   }, [screen, session]);
 
   useEffect(() => {
@@ -2954,18 +3022,24 @@ export default function Outfield() {
 
   // Feature 2 — cancel booking with escalating penalty and cancellation count
   const handleCancelBooking = async (id) => {
+    console.log('[cancel] attempt for booking id:', id);
     const booking = [...(bookingHistory || []), ...(myBookings || [])].find(b => b.id === id);
+    console.log('[cancel] found booking:', booking);
 
-    // Only allow cancelling confirmed future bookings
-    if (!booking || booking.status !== 'confirmed' || !isFutureBooking(booking.booking_date)) {
+    // Allow cancelling confirmed or pending_verification future bookings
+    const cancellable = booking && ['confirmed','pending_verification'].includes(booking.status) && isFutureBooking(booking.booking_date);
+    if (!cancellable) {
       setCancelConfirmId(null);
       showToast("This booking cannot be cancelled");
+      console.log('[cancel] blocked — status:', booking?.status, 'future:', isFutureBooking(booking?.booking_date));
       return;
     }
 
     const late = isCancelLate(booking);
 
+    console.log('[cancel] calling supabase update...');
     const { error: cancelErr } = await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', id);
+    console.log('[cancel] update result — error:', cancelErr);
     if (cancelErr) {
       showToast("Failed to cancel: " + cancelErr.message);
       return;
@@ -3089,6 +3163,25 @@ export default function Outfield() {
       }, { onConflict: 'id', ignoreDuplicates: true });
 
       const needsAdvance = (ground.advance_required || 0) > 0;
+      const advanceAmt = ground.advance_required || 0;
+
+      // Double-booking prevention: check if slot is already taken
+      if (courtId) {
+        const { data: existing } = await supabase
+          .from('bookings')
+          .select('id')
+          .eq('court_id', courtId)
+          .eq('booking_date', date)
+          .eq('start_time', timeFrom)
+          .in('status', ['confirmed', 'pending_verification'])
+          .maybeSingle();
+        if (existing) {
+          setBookingCount(p => p - 1);
+          showToast("This slot is already booked. Please choose another time.");
+          return;
+        }
+      }
+
       const { error: bkErr } = await supabase.from('bookings').insert({
         court_id:       courtId,
         player_id:      session.user.id,
@@ -3096,6 +3189,7 @@ export default function Outfield() {
         start_time:     timeFrom,
         end_time:       timeTo,
         total_price:    (curSlot.price || 0) * playerCount,
+        advance_paid:   needsAdvance ? advanceAmt : 0,
         player_count:   playerCount,
         payment_method: needsAdvance ? "jazzcash" : pay,
         status:         needsAdvance ? "pending_verification" : "confirmed",
@@ -3105,7 +3199,11 @@ export default function Outfield() {
       });
       if (bkErr) {
         setBookingCount(p => p - 1);
-        showToast("Booking failed: " + (bkErr.message || "Please try again."));
+        if (bkErr.code === '23505') {
+          showToast("This slot is already booked. Please choose another time.");
+        } else {
+          showToast("Booking failed: " + (bkErr.message || "Please try again."));
+        }
         return;
       }
       setLastBookingPending(needsAdvance);
@@ -3737,37 +3835,153 @@ export default function Outfield() {
           </div>
         )}
         {authUser?.role === "owner" && (() => {
-          const totalBookings = ownerBookings.length;
-          const totalRevenue  = ownerBookings.reduce((s,b) => s + (b.total_price||0), 0);
-          // Revenue by date range (booking_date stored as "Apr 14" format)
+          // Use ownerAllBookings which is loaded on initial render
+          const totalBookings = ownerAllBookings.length;
+          const totalRevenue  = ownerAllBookings.reduce((s,b) => s + (b.total_price||0), 0);
           const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
           const toLabel = (d) => `${months[d.getMonth()]} ${d.getDate()}`;
           const todayLabel = toLabel(new Date());
-          const confirmedBks = ownerBookings.filter(b => b.status === 'confirmed');
+          const confirmedBks = ownerAllBookings.filter(b => b.status === 'confirmed' || b.status === 'completed');
           const todayEarnings = confirmedBks.filter(b => b.booking_date === todayLabel).reduce((s,b)=>s+(b.total_price||0),0);
           const weekDates = Array.from({length:7},(_,i)=>{ const d=new Date(); d.setDate(d.getDate()-i); return toLabel(d); });
           const weekEarnings = confirmedBks.filter(b => weekDates.includes(b.booking_date)).reduce((s,b)=>s+(b.total_price||0),0);
-          const monthDates = Array.from({length:30},(_,i)=>{ const d=new Date(); d.setDate(d.getDate()-i); return toLabel(d); });
+          const now = new Date();
+          const monthDates = Array.from({length:new Date(now.getFullYear(),now.getMonth()+1,0).getDate()},(_,i)=>{
+            return toLabel(new Date(now.getFullYear(),now.getMonth(),i+1));
+          });
           const monthEarnings = confirmedBks.filter(b => monthDates.includes(b.booking_date)).reduce((s,b)=>s+(b.total_price||0),0);
+          const activeGrounds = ownerGrounds.filter(g => g.status === 'live').length;
+
+          // Upcoming bookings sorted by date ascending (for bookings section)
+          const parseBookingDate = (dateStr, timeStr) => {
+            const mmap = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+            const parts = (dateStr||'').split(' ');
+            if (parts.length < 2) return new Date(0);
+            const [h,m] = (timeStr||'00:00').split(':').map(Number);
+            return new Date(now.getFullYear(), mmap[parts[0]]??0, parseInt(parts[1])||1, h, m);
+          };
+          const upcomingBks = ownerAllBookings
+            .filter(b => ['confirmed','pending_verification'].includes(b.status) && parseBookingDate(b.booking_date, b.start_time) >= now)
+            .sort((a,b) => parseBookingDate(a.booking_date, a.start_time) - parseBookingDate(b.booking_date, b.start_time));
+
           return (
           <div style={{background:"var(--bg)",paddingBottom:88,minHeight:"100%"}}>
+
+            {/* Owner ground slot view modal */}
+            {ownerGroundSlotView && (() => {
+              const g = ownerGroundSlotView.ground;
+              const cts = ownerGroundSlotView.courts || [];
+              const [y,mon,d] = ownerSlotViewDate.split('-').map(Number);
+              const dateLabel = `${months[mon-1]} ${d}`;
+              const slotsForDate = ownerSlotViewData.filter(b => b.booking_date === dateLabel);
+              return (
+                <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:2000,display:'flex',alignItems:'flex-end'}}
+                  onClick={e=>{if(e.target===e.currentTarget){setOwnerGroundSlotView(null);setOwnerSlotViewData([]);}}}>
+                  <div style={{background:'var(--bg)',width:'100%',maxHeight:'88vh',borderRadius:'20px 20px 0 0',overflowY:'auto',padding:'0 0 40px'}}>
+                    <div style={{padding:'18px 18px 10px',display:'flex',alignItems:'center',justifyContent:'space-between',borderBottom:'1px solid var(--border)'}}>
+                      <div>
+                        <div style={{fontSize:15,fontWeight:800,color:'var(--ink1)'}}>{g.name}</div>
+                        <div style={{fontSize:11,color:'var(--ink4)',marginTop:2}}>{g.area}</div>
+                      </div>
+                      <button onClick={()=>{setOwnerGroundSlotView(null);setOwnerSlotViewData([]);}}
+                        style={{background:'var(--border2)',border:'none',borderRadius:8,padding:'6px 10px',cursor:'pointer',fontSize:13,color:'var(--ink3)'}}>
+                        ✕ Close
+                      </button>
+                    </div>
+                    <div style={{padding:'14px 18px 8px',display:'flex',alignItems:'center',gap:10}}>
+                      <input type="date" className="finput" style={{flex:1,fontSize:12}}
+                        value={ownerSlotViewDate}
+                        onChange={async e=>{
+                          const newDate = e.target.value;
+                          setOwnerSlotViewDate(newDate);
+                          if (cts.length > 0) {
+                            setOwnerSlotViewLoading(true);
+                            const [ny,nm,nd] = newDate.split('-').map(Number);
+                            const dlabel = `${months[nm-1]} ${nd}`;
+                            const { data } = await supabase.from('bookings')
+                              .select('*, users!player_id(name)')
+                              .in('court_id', cts.map(c=>c.id))
+                              .eq('booking_date', dlabel);
+                            setOwnerSlotViewData(data || []);
+                            setOwnerSlotViewLoading(false);
+                          }
+                        }}
+                      />
+                    </div>
+                    {ownerSlotViewLoading ? (
+                      <div style={{padding:'20px',textAlign:'center',color:'var(--ink4)',fontSize:12}}>Loading slots…</div>
+                    ) : cts.length === 0 ? (
+                      <div style={{padding:'20px',textAlign:'center',color:'var(--ink4)',fontSize:12}}>No courts registered for this ground.</div>
+                    ) : cts.map(ct => {
+                      const openFrom = g.open_from || '06:00';
+                      const openTill = g.open_till || '23:00';
+                      const dur = ct.slot_duration_mins || 120;
+                      const slots = (() => {
+                        const result = [];
+                        let [sh, sm] = openFrom.split(':').map(Number);
+                        const [eh, em] = openTill.split(':').map(Number);
+                        const endMins = eh * 60 + em;
+                        while (sh * 60 + sm + dur <= endMins) {
+                          const fromStr = `${String(sh).padStart(2,'0')}:${String(sm).padStart(2,'0')}`;
+                          const em2 = sm + dur, eh2 = sh + Math.floor(em2/60), rem = em2 % 60;
+                          const toStr = `${String(eh2).padStart(2,'0')}:${String(rem).padStart(2,'0')}`;
+                          result.push({ from: fromStr, to: toStr });
+                          sm += dur; sh += Math.floor(sm/60); sm %= 60;
+                        }
+                        return result;
+                      })();
+                      return (
+                        <div key={ct.id} style={{padding:'10px 18px'}}>
+                          <div style={{fontSize:12,fontWeight:700,color:'var(--ink2)',marginBottom:8}}>{ct.name}</div>
+                          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                            {slots.map(s => {
+                              const bk = slotsForDate.find(b => b.court_id===ct.id && b.start_time===s.from && ['confirmed','pending_verification'].includes(b.status));
+                              const isPending = bk?.status === 'pending_verification';
+                              const isBooked = bk?.status === 'confirmed';
+                              const bg = isBooked ? '#FEE2E2' : isPending ? '#FEF9C3' : '#F0FDF4';
+                              const border = isBooked ? '#FCA5A5' : isPending ? '#FDE68A' : '#BBF7D0';
+                              const label = isBooked ? `Booked · ${bk.users?.name||'Player'}` : isPending ? `Pending · ${bk.users?.name||'Player'}` : 'Available';
+                              const txtColor = isBooked ? '#DC2626' : isPending ? '#D97706' : '#16A34A';
+                              return (
+                                <div key={s.from} style={{display:'flex',alignItems:'center',gap:12,background:bg,border:`1px solid ${border}`,borderRadius:10,padding:'10px 12px'}}>
+                                  <div style={{fontSize:12,fontWeight:700,color:'var(--ink2)',minWidth:90}}>{s.from} – {s.to}</div>
+                                  <div style={{fontSize:11,fontWeight:600,color:txtColor}}>{label}</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* ── Header ── */}
             <div className="odash-head">
               <div className="odash-head-glow"/>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                 <div className="odash-greeting">Owner Dashboard</div>
-                <button onClick={()=>setOwnerDashRefreshTick(t=>t+1)}
-                  style={{background:"rgba(255,255,255,.1)",border:"none",borderRadius:8,padding:"6px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:5,color:"rgba(255,255,255,.7)",fontSize:11,fontWeight:600,fontFamily:"Inter,sans-serif"}}>
-                  <RefreshCw size={12} strokeWidth={2} style={ownerDashLoading?{animation:"spin 1s linear infinite"}:{}}/> Refresh
-                </button>
+                <div style={{display:'flex',alignItems:'center',gap:8}}>
+                  {ownerNewNotifCount > 0 && (
+                    <button onClick={()=>{setOwnerDashViewSection("bookings");}}
+                      style={{position:'relative',background:'#DC2626',border:'none',borderRadius:8,padding:'6px 10px',cursor:'pointer',color:'#fff',fontSize:11,fontWeight:700,fontFamily:'Inter,sans-serif'}}>
+                      <Bell size={12} strokeWidth={2}/> {ownerNewNotifCount} new
+                    </button>
+                  )}
+                  <button onClick={()=>setOwnerDashRefreshTick(t=>t+1)}
+                    style={{background:"rgba(255,255,255,.1)",border:"none",borderRadius:8,padding:"6px 10px",cursor:"pointer",display:"flex",alignItems:"center",gap:5,color:"rgba(255,255,255,.7)",fontSize:11,fontWeight:600,fontFamily:"Inter,sans-serif"}}>
+                    <RefreshCw size={12} strokeWidth={2} style={ownerDashLoading?{animation:"spin 1s linear infinite"}:{}}/> Refresh
+                  </button>
+                </div>
               </div>
               <div className="odash-title">Your <em>Grounds</em></div>
               <div className="odash-sub">{authUser?.name || "Owner"} · {authUser?.city || "Pakistan"}</div>
               <div className="odash-stats">
                 <div className="odash-stat">
-                  <div className="odash-stat-n">{ownerDashLoading ? "…" : ownerGrounds.length}</div>
-                  <div className="odash-stat-l">Grounds</div>
+                  <div className="odash-stat-n">{ownerDashLoading ? "…" : activeGrounds}</div>
+                  <div className="odash-stat-l">Active</div>
                 </div>
                 <div className="odash-stat">
                   <div className="odash-stat-n">{ownerDashLoading ? "…" : totalBookings}</div>
@@ -3775,7 +3989,7 @@ export default function Outfield() {
                 </div>
                 <div className="odash-stat">
                   <div className="odash-stat-n" style={{fontSize:13}}>
-                    {ownerDashLoading ? "…" : `Rs ${totalRevenue.toLocaleString()}`}
+                    {ownerDashLoading ? "…" : totalRevenue > 0 ? `Rs ${totalRevenue.toLocaleString()}` : "—"}
                   </div>
                   <div className="odash-stat-l">All-time</div>
                 </div>
@@ -3797,9 +4011,100 @@ export default function Outfield() {
               </div>
             </div>
 
+            {/* ── Section tabs ── */}
+            <div style={{display:'flex',gap:0,margin:'0 18px 0',background:'var(--border2)',borderRadius:12,padding:4}}>
+              {[["grounds","Grounds"],["bookings","Upcoming Bookings"]].map(([key,label])=>(
+                <button key={key}
+                  onClick={async()=>{
+                    setOwnerDashViewSection(key);
+                    if (key === 'bookings' && ownerNewNotifCount > 0) {
+                      // Mark all unseen announcements as seen
+                      await supabase.from('announcements')
+                        .update({ is_seen: true })
+                        .eq('owner_id', session.user.id)
+                        .eq('is_seen', false);
+                      setOwnerNewNotifCount(0);
+                    }
+                  }}
+                  style={{flex:1,padding:'8px 0',borderRadius:10,border:'none',cursor:'pointer',fontSize:12,fontWeight:700,fontFamily:'Inter,sans-serif',
+                    background: ownerDashViewSection===key ? 'var(--bg)' : 'transparent',
+                    color: ownerDashViewSection===key ? 'var(--ink1)' : 'var(--ink4)',
+                    boxShadow: ownerDashViewSection===key ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
+                    position:'relative'}}>
+                  {label}
+                  {key==='bookings' && ownerNewNotifCount > 0 && (
+                    <span style={{position:'absolute',top:4,right:8,background:'#DC2626',color:'#fff',fontSize:9,fontWeight:800,borderRadius:100,padding:'1px 5px',minWidth:14,textAlign:'center'}}>
+                      {ownerNewNotifCount}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+
             {/* ── Ground list ── */}
             <div className="odash-body">
-              {ownerDashLoading ? (
+              {/* ── Bookings section ── */}
+              {ownerDashViewSection === "bookings" && (
+                ownerDashLoading ? (
+                  <div className="bh-loading"><RefreshCw size={16} color="var(--ink4)" strokeWidth={2}/> Loading…</div>
+                ) : upcomingBks.length === 0 ? (
+                  <div className="odash-empty">
+                    <div className="odash-empty-ico"><Calendar size={22} color="var(--ink4)" strokeWidth={1.5}/></div>
+                    <div className="odash-empty-t">No upcoming bookings</div>
+                    <div className="odash-empty-s">Bookings from players will appear here.</div>
+                  </div>
+                ) : (
+                  <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                    {upcomingBks.map((b,i) => {
+                      const within24h = (parseBookingDate(b.booking_date, b.start_time) - now) < 24*60*60*1000;
+                      const playerName = b.users?.name || '—';
+                      const playerPhone = b.users?.phone || '';
+                      const courtInfo = ownerCourtMap[b.court_id];
+                      const groundInfo = ownerGrounds.find(g => g.id === courtInfo?.ground_id);
+                      return (
+                        <div key={b.id||i} style={{background:'var(--bg)',border:`1px solid ${within24h?'#FCA5A5':'var(--border)'}`,borderRadius:14,padding:'12px 14px',
+                          boxShadow: within24h ? '0 0 0 2px #FEE2E2' : 'none'}}>
+                          {within24h && (
+                            <div style={{fontSize:10,fontWeight:800,color:'#DC2626',marginBottom:6,display:'flex',alignItems:'center',gap:4}}>
+                              <AlertCircle size={10} strokeWidth={2.5}/> Within 24 hours
+                            </div>
+                          )}
+                          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}}>
+                            <div style={{fontSize:13,fontWeight:800,color:'var(--ink1)'}}>{playerName}</div>
+                            <div style={{fontSize:10,fontWeight:700,color: b.status==='confirmed'?'#16A34A':b.status==='pending_verification'?'#D97706':'var(--ink4)',
+                              background: b.status==='confirmed'?'#F0FDF4':b.status==='pending_verification'?'#FEF9C3':'var(--border2)',
+                              borderRadius:100,padding:'3px 8px'}}>
+                              {b.status==='pending_verification'?'pending':b.status}
+                            </div>
+                          </div>
+                          {playerPhone && <div style={{fontSize:11,color:'var(--ink4)',marginBottom:4}}>{playerPhone}</div>}
+                          {(groundInfo || courtInfo) && (
+                            <div style={{fontSize:11,color:'var(--ink3)',marginBottom:4,fontWeight:600}}>
+                              {groundInfo?.name || '—'}{courtInfo?.name ? ` · ${courtInfo.name}` : ''}
+                            </div>
+                          )}
+                          <div style={{display:'flex',flexWrap:'wrap',gap:8,fontSize:11,color:'var(--ink3)'}}>
+                            <span style={{display:'flex',alignItems:'center',gap:3}}><Calendar size={10} strokeWidth={2}/>{b.booking_date}</span>
+                            <span style={{display:'flex',alignItems:'center',gap:3}}><Clock size={10} strokeWidth={2}/>{b.start_time} – {b.end_time}</span>
+                          </div>
+                          <div style={{marginTop:6,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                            <div style={{fontSize:11,color:'var(--ink4)'}}>
+                              Total: <strong>Rs {(b.total_price||0).toLocaleString()}</strong>
+                              {Number(b.advance_paid)>0 && <span style={{color:'#D97706'}}> · Advance: Rs {Number(b.advance_paid).toLocaleString()}</span>}
+                            </div>
+                            <div style={{fontSize:11,fontWeight:600,color:'var(--ink4)'}}>
+                              {b.booking_ref||'—'}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )
+              )}
+
+              {/* ── Grounds section ── */}
+              {ownerDashViewSection === "grounds" && (ownerDashLoading ? (
                 <div className="bh-loading">
                   <RefreshCw size={16} color="var(--ink4)" strokeWidth={2}/> Loading…
                 </div>
@@ -3818,12 +4123,6 @@ export default function Outfield() {
 
               ) : (<>
                 {ownerGrounds.map(g => {
-                  const gBookings  = (g.courts||[]).flatMap(c => c.bookings||[]);
-                  const confirmed  = gBookings.filter(b => b.status === "confirmed").length;
-                  const cancelled  = gBookings.filter(b => b.status === "cancelled").length;
-                  const revenue    = gBookings
-                    .filter(b => b.status === "confirmed")
-                    .reduce((s,b) => s + (b.total_price||0), 0);
                   const statusKey  = g.status || "pending";
 
                   return (
@@ -3850,26 +4149,31 @@ export default function Outfield() {
                           {g.area}{g.city ? ` · ${g.city}` : ""}
                         </div>
 
-                        {/* Booking stats row */}
-                        <div className="odash-bkstat-row">
-                          <div className="odash-bkstat">
-                            <div className="odash-bkstat-n">{confirmed}</div>
-                            <div className="odash-bkstat-l">Confirmed</div>
-                          </div>
-                          <div className="odash-bkstat">
-                            <div className="odash-bkstat-n">{cancelled}</div>
-                            <div className="odash-bkstat-l">Cancelled</div>
-                          </div>
-                          <div className="odash-bkstat">
-                            <div className="odash-bkstat-n" style={{fontSize:12}}>
-                              {revenue > 0 ? `Rs ${revenue.toLocaleString()}` : "—"}
-                            </div>
-                            <div className="odash-bkstat-l">Revenue</div>
-                          </div>
+                        {/* Footer: view slots + edit + toggle */}
+                        <div style={{display:'flex',gap:6,marginTop:8,flexWrap:'wrap'}}>
+                          <button
+                            style={{fontSize:11,fontWeight:700,color:"#2563EB",background:"#EFF6FF",border:"1px solid #BFDBFE",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontFamily:"Inter,sans-serif"}}
+                            onClick={async()=>{
+                              const [ny,nm,nd] = ownerSlotViewDate.split('-').map(Number);
+                              const dlabel = `${months[nm-1]} ${nd}`;
+                              // Fetch courts for this ground
+                              const { data: cts } = await supabase.from('courts').select('*').eq('ground_id', g.id);
+                              const courtIds = (cts||[]).map(c=>c.id);
+                              setOwnerGroundSlotView({ ground: g, courts: cts||[] });
+                              if (courtIds.length > 0) {
+                                setOwnerSlotViewLoading(true);
+                                const { data: bks } = await supabase.from('bookings')
+                                  .select('*, users!player_id(name)')
+                                  .in('court_id', courtIds)
+                                  .eq('booking_date', dlabel);
+                                setOwnerSlotViewData(bks||[]);
+                                setOwnerSlotViewLoading(false);
+                              }
+                            }}>
+                            View Slots
+                          </button>
                         </div>
-
-                        {/* Footer: edit + toggle */}
-                        <div className="odash-ground-footer">
+                        <div className="odash-ground-footer" style={{marginTop:8}}>
                           <button
                             style={{fontSize:11,fontWeight:700,color:"var(--ink3)",background:"var(--border2)",border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontFamily:"Inter,sans-serif"}}
                             onClick={()=>{
@@ -3910,7 +4214,7 @@ export default function Outfield() {
                 <button className="odash-block-btn" onClick={()=>{setBlockGroundId(ownerGrounds[0]?.id||"");setShowBlockSheet(true);}}>
                   <X size={14} strokeWidth={2.5}/> Quick Block a Slot
                 </button>
-              </>)}
+              </>))}
             </div>
           </div>
           );
@@ -4579,7 +4883,8 @@ export default function Outfield() {
                       : st === "completed"    ? "Booking completed"
                       : st === "cancelled"    ? "Booking cancelled"
                       : null;
-                    const remainingAtVenue = b.total_price > 0 ? b.total_price - (b.advance_paid || 0) : 0;
+                    const advPaid = Number(b.advance_paid) || 0;
+                    const remainingAtVenue = b.total_price > 0 && advPaid > 0 ? Math.max(0, b.total_price - advPaid) : 0;
                     return (
                       <div key={b.id || i} className="bh-card">
                         <div className="bh-card-top">
@@ -6386,13 +6691,16 @@ export default function Outfield() {
               ) : bookingHistory.map((b, i) => {
                 const groundName = b.courts?.grounds?.name || b.courts?.name || "Ground";
                 const courtName  = b.courts?.name || null;
-                const statusCls  = b.status === "confirmed" ? "confirmed" : b.status === "cancelled" ? "cancelled" : "pending";
-                const canCancel  = b.status === "confirmed" && isFutureBooking(b.booking_date);
+                const st = b.status || "confirmed";
+                const statusCls  = st === "confirmed" ? "confirmed" : st === "cancelled" ? "cancelled" : "pending";
+                const canCancel  = ['confirmed','pending_verification'].includes(st) && isFutureBooking(b.booking_date);
+                const advPaid2 = Number(b.advance_paid) || 0;
+                const remaining2 = b.total_price > 0 && advPaid2 > 0 ? Math.max(0, b.total_price - advPaid2) : 0;
                 return (
                   <div key={b.id || i} className="bh-card">
                     <div className="bh-card-top">
                       <div className="bh-ground">{groundName}{courtName && courtName !== groundName ? ` · ${courtName}` : ""}</div>
-                      <div className={`bh-status ${statusCls}`}>{b.status || "confirmed"}</div>
+                      <div className={`bh-status ${statusCls}`}>{st === "pending_verification" ? "pending" : st}</div>
                     </div>
                     <div className="bh-meta">
                       <div className="bh-meta-item">
@@ -6404,6 +6712,12 @@ export default function Outfield() {
                         {b.start_time} – {b.end_time}
                       </div>
                     </div>
+                    {st === "confirmed" && remaining2 > 0 && (
+                      <div style={{fontSize:11,color:"#16A34A",fontWeight:600,marginTop:6}}>
+                        <CheckCircle size={11} strokeWidth={2.5} style={{marginRight:4,verticalAlign:"middle"}}/>
+                        Pay Rs {remaining2.toLocaleString()} remaining at venue
+                      </div>
+                    )}
                     <div className="bh-divider"/>
                     <div className="bh-bottom">
                       <div className="bh-ref">{b.booking_ref || "—"}</div>
