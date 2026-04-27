@@ -2332,20 +2332,51 @@ export default function Outfield() {
         const groundIds = gList.map(g => g.id);
         const { data: courtData } = await supabase
           .from('courts').select('id, name, ground_id').in('ground_id', groundIds);
-        const courtIds = (courtData || []).map(c => c.id);
-        // Build court lookup map
         const cmap = {};
         (courtData || []).forEach(c => { cmap[c.id] = c; });
         setOwnerCourtMap(cmap);
-        if (courtIds.length > 0) {
-          const { data: bkData } = await supabase
-            .from('bookings')
-            .select('*, users!player_id(name, phone)')
-            .in('court_id', courtIds)
+        const courtIds = (courtData || []).map(c => c.id);
+
+        // Fetch all bookings for this owner — primary: by ground_id, fallback: by court_id (legacy)
+        const seenIds = new Set();
+        const allBks = [];
+
+        // Primary: bookings that have ground_id pointing to owner's grounds
+        if (groundIds.length > 0) {
+          const { data: byGround } = await supabase
+            .from('bookings').select('*').in('ground_id', groundIds)
             .order('created_at', { ascending: false });
-          setOwnerAllBookings(bkData || []);
-          setOwnerBookings(bkData || []);
+          for (const b of (byGround || [])) {
+            if (!seenIds.has(b.id)) { seenIds.add(b.id); allBks.push(b); }
+          }
         }
+
+        // Fallback: bookings that have court_id pointing to owner's courts (older bookings)
+        if (courtIds.length > 0) {
+          const { data: byCourt } = await supabase
+            .from('bookings').select('*').in('court_id', courtIds)
+            .order('created_at', { ascending: false });
+          for (const b of (byCourt || [])) {
+            if (!seenIds.has(b.id)) { seenIds.add(b.id); allBks.push(b); }
+          }
+        }
+
+        // Enrich with player name/phone via separate users fetch (avoids FK join issues)
+        const playerIds = [...new Set(allBks.map(b => b.player_id).filter(Boolean))];
+        let playerMap = {};
+        if (playerIds.length > 0) {
+          const { data: players } = await supabase
+            .from('users').select('id, name, phone').in('id', playerIds);
+          (players || []).forEach(p => { playerMap[p.id] = p; });
+        }
+        const enriched = allBks.map(b => ({
+          ...b,
+          users: playerMap[b.player_id] || null,
+        }));
+
+        setOwnerAllBookings(enriched);
+        setOwnerBookings(enriched);
+
         // Fetch unseen notification count from announcements
         const { count } = await supabase
           .from('announcements')
@@ -3042,9 +3073,11 @@ export default function Outfield() {
 
   // Feature 2 — cancel booking with escalating penalty and cancellation count
   const handleCancelBooking = async (id) => {
-    console.log('[cancel] attempt for booking id:', id);
-    const booking = [...(bookingHistory || []), ...(myBookings || [])].find(b => b.id === id);
-    console.log('[cancel] found booking:', booking);
+    console.log('CANCEL PRESSED', id);
+    const allBookings = [...(bookingHistory || []), ...(myBookings || [])];
+    console.log('CANCEL all bookings in state:', allBookings.map(b => ({ id: b.id, status: b.status, date: b.booking_date })));
+    const booking = allBookings.find(b => b.id === id);
+    console.log('CANCEL found booking:', booking);
 
     // Allow cancelling confirmed or pending_verification future bookings (normalize status casing)
     const normSt = (booking?.status || '').toLowerCase();
@@ -3052,15 +3085,16 @@ export default function Outfield() {
     if (!cancellable) {
       setCancelConfirmId(null);
       showToast("This booking cannot be cancelled");
-      console.log('[cancel] blocked — status:', booking?.status, 'future:', isFutureBooking(booking?.booking_date));
+      console.log('CANCEL blocked — status:', booking?.status, 'normSt:', normSt, 'future:', isFutureBooking(booking?.booking_date));
       return;
     }
 
     const late = isCancelLate(booking);
 
-    console.log('[cancel] calling supabase update...');
-    const { error: cancelErr } = await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', id);
-    console.log('[cancel] update result — error:', cancelErr);
+    console.log('CANCEL SUPABASE CALL START');
+    const { data: cancelData, error: cancelErr } = await supabase
+      .from('bookings').update({ status: 'cancelled' }).eq('id', id).select();
+    console.log('CANCEL RESULT', cancelData, cancelErr);
     if (cancelErr) {
       showToast("Failed to cancel: " + cancelErr.message);
       return;
@@ -4135,7 +4169,9 @@ export default function Outfield() {
                       const playerName = b.users?.name || '—';
                       const playerPhone = b.users?.phone || '';
                       const courtInfo = ownerCourtMap[b.court_id];
-                      const groundInfo = ownerGrounds.find(g => g.id === courtInfo?.ground_id);
+                      // Resolve ground: via court's ground_id chain, or directly from booking's ground_id
+                      const groundInfo = ownerGrounds.find(g => g.id === (courtInfo?.ground_id || b.ground_id));
+                      const bkNormSt = (b.status || 'confirmed').toLowerCase();
                       return (
                         <div key={b.id||i} style={{background:'var(--bg)',border:`1px solid ${within24h?'#FCA5A5':'var(--border)'}`,borderRadius:14,padding:'12px 14px',
                           boxShadow: within24h ? '0 0 0 2px #FEE2E2' : 'none'}}>
@@ -4146,18 +4182,17 @@ export default function Outfield() {
                           )}
                           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}}>
                             <div style={{fontSize:13,fontWeight:800,color:'var(--ink1)'}}>{playerName}</div>
-                            <div style={{fontSize:10,fontWeight:700,color: b.status==='confirmed'?'#16A34A':b.status==='pending_verification'?'#D97706':'var(--ink4)',
-                              background: b.status==='confirmed'?'#F0FDF4':b.status==='pending_verification'?'#FEF9C3':'var(--border2)',
+                            <div style={{fontSize:10,fontWeight:700,
+                              color: bkNormSt==='confirmed'?'#16A34A':bkNormSt==='pending_verification'?'#D97706':'var(--ink4)',
+                              background: bkNormSt==='confirmed'?'#F0FDF4':bkNormSt==='pending_verification'?'#FEF9C3':'var(--border2)',
                               borderRadius:100,padding:'3px 8px'}}>
-                              {b.status==='pending_verification'?'pending':b.status}
+                              {bkNormSt==='pending_verification'?'pending':bkNormSt}
                             </div>
                           </div>
                           {playerPhone && <div style={{fontSize:11,color:'var(--ink4)',marginBottom:4}}>{playerPhone}</div>}
-                          {(groundInfo || courtInfo) && (
-                            <div style={{fontSize:11,color:'var(--ink3)',marginBottom:4,fontWeight:600}}>
-                              {groundInfo?.name || '—'}{courtInfo?.name ? ` · ${courtInfo.name}` : ''}
-                            </div>
-                          )}
+                          <div style={{fontSize:11,color:'var(--ink3)',marginBottom:4,fontWeight:600}}>
+                            {groundInfo?.name || '—'}{courtInfo?.name ? ` · ${courtInfo.name}` : ''}
+                          </div>
                           <div style={{display:'flex',flexWrap:'wrap',gap:8,fontSize:11,color:'var(--ink3)'}}>
                             <span style={{display:'flex',alignItems:'center',gap:3}}><Calendar size={10} strokeWidth={2}/>{b.booking_date}</span>
                             <span style={{display:'flex',alignItems:'center',gap:3}}><Clock size={10} strokeWidth={2}/>{b.start_time} – {b.end_time}</span>
@@ -6765,7 +6800,8 @@ export default function Outfield() {
                   <div className="bh-empty-s">Your confirmed bookings will appear here once you book a ground.</div>
                 </div>
               ) : bookingHistory.map((b, i) => {
-                const groundName = b.ground_name || b.courts?.grounds?.name || b.courts?.name || "Ground";
+                const hasGroundInfo = !!(b.ground_name || b.courts?.grounds?.name || b.courts?.name);
+                const groundName = b.ground_name || b.courts?.grounds?.name || b.courts?.name || "Ground details unavailable";
                 const courtName  = b.courts?.name || null;
                 const st = (b.status || "confirmed").toLowerCase();
                 const statusCls  = st === "confirmed" ? "confirmed" : st === "cancelled" ? "cancelled" : "pending";
@@ -6919,7 +6955,7 @@ export default function Outfield() {
               ) : (
                 <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
                   {bookingHistory.map((b, i) => {
-                    const groundName = b.ground_name || b.courts?.grounds?.name || b.courts?.name || "Ground";
+                    const groundName = b.ground_name || b.courts?.grounds?.name || b.courts?.name || "Ground details unavailable";
                     const courtLabel = b.courts?.name && b.courts.name !== groundName ? ` · ${b.courts.name}` : "";
                     const stNorm = (b.status || "confirmed").toLowerCase();
                     const statusCls  = stNorm === "confirmed" ? "confirmed" : stNorm === "cancelled" ? "cancelled" : "pending";
