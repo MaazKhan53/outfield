@@ -2330,6 +2330,8 @@ export default function Outfield() {
 
       if (gList.length > 0) {
         const groundIds = gList.map(g => g.id);
+
+        // Courts lookup map (for slot view modal)
         const { data: courtData } = await supabase
           .from('courts').select('id, name, ground_id').in('ground_id', groundIds);
         const cmap = {};
@@ -2337,31 +2339,32 @@ export default function Outfield() {
         setOwnerCourtMap(cmap);
         const courtIds = (courtData || []).map(c => c.id);
 
-        // Fetch all bookings for this owner — primary: by ground_id, fallback: by court_id (legacy)
+        // Fetch all bookings for this owner by ground_id (primary — new bookings)
         const seenIds = new Set();
         const allBks = [];
 
-        // Primary: bookings that have ground_id pointing to owner's grounds
-        if (groundIds.length > 0) {
-          const { data: byGround } = await supabase
-            .from('bookings').select('*').in('ground_id', groundIds)
-            .order('created_at', { ascending: false });
-          for (const b of (byGround || [])) {
-            if (!seenIds.has(b.id)) { seenIds.add(b.id); allBks.push(b); }
-          }
+        const { data: byGround } = await supabase
+          .from('bookings').select('*')
+          .in('ground_id', groundIds)
+          .in('status', ['confirmed', 'pending_verification'])
+          .order('booking_date', { ascending: true });
+        for (const b of (byGround || [])) {
+          if (!seenIds.has(b.id)) { seenIds.add(b.id); allBks.push(b); }
         }
 
-        // Fallback: bookings that have court_id pointing to owner's courts (older bookings)
+        // Also fetch by court_id for legacy bookings that have court_id but no ground_id
         if (courtIds.length > 0) {
           const { data: byCourt } = await supabase
-            .from('bookings').select('*').in('court_id', courtIds)
-            .order('created_at', { ascending: false });
+            .from('bookings').select('*')
+            .in('court_id', courtIds)
+            .in('status', ['confirmed', 'pending_verification'])
+            .order('booking_date', { ascending: true });
           for (const b of (byCourt || [])) {
             if (!seenIds.has(b.id)) { seenIds.add(b.id); allBks.push(b); }
           }
         }
 
-        // Enrich with player name/phone via separate users fetch (avoids FK join issues)
+        // Fetch player details separately (no FK join — more reliable)
         const playerIds = [...new Set(allBks.map(b => b.player_id).filter(Boolean))];
         let playerMap = {};
         if (playerIds.length > 0) {
@@ -3093,10 +3096,15 @@ export default function Outfield() {
 
     console.log('CANCEL SUPABASE CALL START');
     const { data: cancelData, error: cancelErr } = await supabase
-      .from('bookings').update({ status: 'cancelled' }).eq('id', id).select();
+      .from('bookings')
+      .update({ status: 'cancelled' })
+      .eq('id', id)
+      .eq('player_id', session.user.id)
+      .select();
     console.log('CANCEL RESULT', cancelData, cancelErr);
     if (cancelErr) {
-      showToast("Failed to cancel: " + cancelErr.message);
+      console.error('CANCEL ERROR', cancelErr);
+      showToast('Cancel failed: ' + cancelErr.message);
       return;
     }
 
@@ -3256,24 +3264,16 @@ export default function Outfield() {
       const needsAdvance = (ground.advance_required || 0) > 0;
       const advanceAmt = ground.advance_required || 0;
 
-      // Double-booking prevention: check if slot is already taken
-      if (courtId) {
-        const { data: existing } = await supabase
-          .from('bookings').select('id')
-          .eq('court_id', courtId).eq('booking_date', date).eq('start_time', timeFrom)
-          .in('status', ['confirmed', 'pending_verification']).maybeSingle();
-        if (existing) {
-          setBookingCount(p => p - 1);
-          showToast("This slot is already booked. Please choose another time.");
-          return;
-        }
-      } else if (ground.id) {
-        const { data: existing } = await supabase
-          .from('bookings').select('id')
-          .eq('ground_id', ground.id).is('court_id', null)
-          .eq('booking_date', date).eq('start_time', timeFrom)
-          .in('status', ['confirmed', 'pending_verification']).maybeSingle();
-        if (existing) {
+      // Double-booking prevention: count-based check on ground_id + date + start_time
+      if (ground.id) {
+        const { count } = await supabase
+          .from('bookings')
+          .select('*', { count: 'exact', head: true })
+          .eq('ground_id', ground.id)
+          .eq('booking_date', date)
+          .eq('start_time', timeFrom)
+          .in('status', ['confirmed', 'pending_verification']);
+        if (count > 0) {
           setBookingCount(p => p - 1);
           showToast("This slot is already booked. Please choose another time.");
           return;
@@ -3283,6 +3283,8 @@ export default function Outfield() {
       const { error: bkErr } = await supabase.from('bookings').insert({
         court_id:       courtId,
         ground_id:      ground.id || null,
+        ground_name:    ground.name || null,
+        court_name:     court?.name || null,
         player_id:      session.user.id,
         booking_date:   date,
         start_time:     timeFrom,
@@ -6800,9 +6802,8 @@ export default function Outfield() {
                   <div className="bh-empty-s">Your confirmed bookings will appear here once you book a ground.</div>
                 </div>
               ) : bookingHistory.map((b, i) => {
-                const hasGroundInfo = !!(b.ground_name || b.courts?.grounds?.name || b.courts?.name);
                 const groundName = b.ground_name || b.courts?.grounds?.name || b.courts?.name || "Ground details unavailable";
-                const courtName  = b.courts?.name || null;
+                const courtName  = b.court_name || b.courts?.name || null;
                 const st = (b.status || "confirmed").toLowerCase();
                 const statusCls  = st === "confirmed" ? "confirmed" : st === "cancelled" ? "cancelled" : "pending";
                 const canCancel  = ['confirmed','pending_verification'].includes(st) && isFutureBooking(b.booking_date);
@@ -6956,7 +6957,7 @@ export default function Outfield() {
                 <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
                   {bookingHistory.map((b, i) => {
                     const groundName = b.ground_name || b.courts?.grounds?.name || b.courts?.name || "Ground details unavailable";
-                    const courtLabel = b.courts?.name && b.courts.name !== groundName ? ` · ${b.courts.name}` : "";
+                    const courtLabel = (b.court_name || b.courts?.name) && (b.court_name || b.courts?.name) !== groundName ? ` · ${b.court_name || b.courts?.name}` : "";
                     const stNorm = (b.status || "confirmed").toLowerCase();
                     const statusCls  = stNorm === "confirmed" ? "confirmed" : stNorm === "cancelled" ? "cancelled" : "pending";
                     return (
