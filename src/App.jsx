@@ -2108,6 +2108,7 @@ export default function Outfield() {
   const [ownerSlotViewDate, setOwnerSlotViewDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [ownerSlotViewData, setOwnerSlotViewData] = useState([]); // bookings for selected date
   const [ownerSlotViewLoading, setOwnerSlotViewLoading] = useState(false);
+  const [myMatchmakingMap, setMyMatchmakingMap] = useState({}); // booking_ref → matchmaking.id
   // Feature: city filter
   const [filterCity, setFilterCity]               = useState("all");
   // Feature: contact us sheet
@@ -2391,7 +2392,7 @@ export default function Outfield() {
     return () => supabase.removeChannel(channel);
   }, [authUser?.role, session?.user?.id]);
 
-  // Fetch booking history when profile or bookingHistory screen is active (two-step to avoid nested join 400)
+  // Fetch booking history when profile or bookingHistory screen is active (three-step flat fetch)
   useEffect(() => {
     if (!["profile","bookingHistory"].includes(screen) || !session?.user) return;
     setBookingHistoryLoading(true);
@@ -2403,32 +2404,51 @@ export default function Outfield() {
         .order('id', { ascending: false });
       if (error) { console.error('[bookingHistory] fetch error:', error); setBookingHistoryLoading(false); return; }
       const bookings = bks || [];
-      // Fetch court+ground names separately (no nested join — no FK constraints in DB)
+      let groundMap = {};
+      // Step 2a: fetch courts for bookings that have court_id
       const courtIds = [...new Set(bookings.map(b => b.court_id).filter(Boolean))];
       let courtMap = {};
       if (courtIds.length > 0) {
         const { data: courts } = await supabase
           .from('courts').select('id, name, ground_id').in('id', courtIds);
-        const groundIds = [...new Set((courts||[]).map(c => c.ground_id).filter(Boolean))];
-        let groundMap = {};
-        if (groundIds.length > 0) {
+        const groundIdsFromCourts = [...new Set((courts||[]).map(c => c.ground_id).filter(Boolean))];
+        if (groundIdsFromCourts.length > 0) {
           const { data: grounds } = await supabase
-            .from('grounds').select('id, name').in('id', groundIds);
+            .from('grounds').select('id, name').in('id', groundIdsFromCourts);
           (grounds||[]).forEach(g => { groundMap[g.id] = g; });
         }
-        (courts || []).forEach(c => {
+        (courts||[]).forEach(c => {
           courtMap[c.id] = { ...c, grounds: groundMap[c.ground_id] || null };
         });
+      }
+      // Step 2b: fetch ground names directly for bookings that have ground_id but no court_id
+      const directGroundIds = [...new Set(bookings
+        .filter(b => b.ground_id && !b.court_id)
+        .map(b => b.ground_id))];
+      if (directGroundIds.length > 0) {
+        const { data: dgs } = await supabase
+          .from('grounds').select('id, name').in('id', directGroundIds);
+        (dgs||[]).forEach(g => { groundMap[g.id] = g; });
       }
       const enriched = bookings.map(b => ({
         ...b,
         courts: b.court_id ? (courtMap[b.court_id] || null) : null,
+        ground_name: b.ground_id ? (groundMap[b.ground_id]?.name || null) : null,
       }));
       setBookingHistory(enriched);
       // Check for newly confirmed bookings not yet shown to user
       const notified = JSON.parse(localStorage.getItem('otf-notified') || '[]');
-      const newConfirmed = enriched.filter(b => b.status === 'confirmed' && !notified.includes(b.id));
+      const newConfirmed = enriched.filter(b => (b.status||'').toLowerCase() === 'confirmed' && !notified.includes(b.id));
       if (newConfirmed.length > 0) setConfirmedNotifications(newConfirmed);
+      // Step 3: fetch matchmaking entries for this user to know which bookings are listed
+      const { data: mmEntries } = await supabase
+        .from('matchmaking').select('id, booking_ref')
+        .eq('host_id', session.user.id).eq('status', 'open');
+      if (mmEntries) {
+        const mmMap = {};
+        mmEntries.forEach(m => { if (m.booking_ref) mmMap[m.booking_ref] = m.id; });
+        setMyMatchmakingMap(mmMap);
+      }
       setBookingHistoryLoading(false);
     })();
   }, [screen, session]);
@@ -3026,8 +3046,9 @@ export default function Outfield() {
     const booking = [...(bookingHistory || []), ...(myBookings || [])].find(b => b.id === id);
     console.log('[cancel] found booking:', booking);
 
-    // Allow cancelling confirmed or pending_verification future bookings
-    const cancellable = booking && ['confirmed','pending_verification'].includes(booking.status) && isFutureBooking(booking.booking_date);
+    // Allow cancelling confirmed or pending_verification future bookings (normalize status casing)
+    const normSt = (booking?.status || '').toLowerCase();
+    const cancellable = booking && ['confirmed','pending_verification'].includes(normSt) && isFutureBooking(booking.booking_date);
     if (!cancellable) {
       setCancelConfirmId(null);
       showToast("This booking cannot be cancelled");
@@ -3048,6 +3069,11 @@ export default function Outfield() {
     setBookingHistory(prev => prev.map(b => b.id === id ? {...b, status: 'cancelled'} : b));
     setMyBookings(prev => prev.map(b => b.id === id ? {...b, status: 'cancelled'} : b));
     setCancelConfirmId(null);
+    // Remove matchmaking listing if this booking was listed
+    if (booking.booking_ref && myMatchmakingMap[booking.booking_ref]) {
+      supabase.from('matchmaking').delete().eq('id', myMatchmakingMap[booking.booking_ref]);
+      setMyMatchmakingMap(prev => { const n = {...prev}; delete n[booking.booking_ref]; return n; });
+    }
 
     if (session?.user) {
       const newCount = (authUser?.cancellation_count || 0) + 1;
@@ -3076,6 +3102,37 @@ export default function Outfield() {
       }
     } else {
       showToast("Booking cancelled");
+    }
+  };
+
+  // Matchmaking toggle from booking history
+  const handleToggleMatchmaking = async (b) => {
+    if (!session?.user || !b.booking_ref) return;
+    const existingId = myMatchmakingMap[b.booking_ref];
+    if (existingId) {
+      await supabase.from('matchmaking').delete().eq('id', existingId);
+      setMyMatchmakingMap(prev => { const n = {...prev}; delete n[b.booking_ref]; return n; });
+      showToast("Removed from matchmaking");
+    } else {
+      const sport = ((b.courts?.sports || '').split(',')[0] || 'cricket').trim();
+      const { data: mm } = await supabase.from('matchmaking').insert({
+        booking_id: null,
+        host_id: session.user.id,
+        sport,
+        players_needed: 10,
+        players_joined: 0,
+        style: 'casual',
+        status: 'open',
+        ground_id: b.ground_id || null,
+        ground_name: b.ground_name || b.courts?.grounds?.name || '',
+        court_name: b.courts?.name || '',
+        date: b.booking_date,
+        booking_ref: b.booking_ref,
+      }).select('id').single();
+      if (mm?.id) {
+        setMyMatchmakingMap(prev => ({...prev, [b.booking_ref]: mm.id}));
+        showToast("Listed for matchmaking!");
+      }
     }
   };
 
@@ -3168,13 +3225,20 @@ export default function Outfield() {
       // Double-booking prevention: check if slot is already taken
       if (courtId) {
         const { data: existing } = await supabase
-          .from('bookings')
-          .select('id')
-          .eq('court_id', courtId)
-          .eq('booking_date', date)
-          .eq('start_time', timeFrom)
-          .in('status', ['confirmed', 'pending_verification'])
-          .maybeSingle();
+          .from('bookings').select('id')
+          .eq('court_id', courtId).eq('booking_date', date).eq('start_time', timeFrom)
+          .in('status', ['confirmed', 'pending_verification']).maybeSingle();
+        if (existing) {
+          setBookingCount(p => p - 1);
+          showToast("This slot is already booked. Please choose another time.");
+          return;
+        }
+      } else if (ground.id) {
+        const { data: existing } = await supabase
+          .from('bookings').select('id')
+          .eq('ground_id', ground.id).is('court_id', null)
+          .eq('booking_date', date).eq('start_time', timeFrom)
+          .in('status', ['confirmed', 'pending_verification']).maybeSingle();
         if (existing) {
           setBookingCount(p => p - 1);
           showToast("This slot is already booked. Please choose another time.");
@@ -3184,6 +3248,7 @@ export default function Outfield() {
 
       const { error: bkErr } = await supabase.from('bookings').insert({
         court_id:       courtId,
+        ground_id:      ground.id || null,
         player_id:      session.user.id,
         booking_date:   date,
         start_time:     timeFrom,
@@ -3226,17 +3291,22 @@ export default function Outfield() {
       }
       // Mark slot as booked immediately in local state
       setRealSlots(prev => prev.map(s => s.startTime === timeFrom ? {...s, booked: true, lfp} : s));
-      setBookedSlotKeys(prev => new Set([...prev, `${courtId}_${date}_${timeFrom}`]));
+      setBookedSlotKeys(prev => new Set([...prev, `${courtId || ground.id}_${date}_${timeFrom}`]));
       // If LFP is on, create a matchmaking post
-      if (lfp && courtId) {
+      if (lfp) {
         supabase.from('matchmaking').insert({
-          booking_id: null, // FK not set to avoid complications
+          booking_id: null,
           host_id: session.user.id,
           sport: (court?.sports?.[0] || (court?.sports||'').split(',')[0] || 'cricket').trim(),
           players_needed: (court?.capacity || 10) - 1,
           players_joined: 0,
           style: 'casual',
           status: 'open',
+          ground_id: ground.id || null,
+          ground_name: ground.name || '',
+          court_name: court?.name || '',
+          date: date,
+          booking_ref: ref,
         }).then(({error}) => { if(error) console.warn('matchmaking insert:', error.message); });
       }
       // Notify the owner via announcements
@@ -3860,8 +3930,13 @@ export default function Outfield() {
             const [h,m] = (timeStr||'00:00').split(':').map(Number);
             return new Date(now.getFullYear(), mmap[parts[0]]??0, parseInt(parts[1])||1, h, m);
           };
+          const todayStart = new Date(); todayStart.setHours(0,0,0,0);
           const upcomingBks = ownerAllBookings
-            .filter(b => ['confirmed','pending_verification'].includes(b.status) && parseBookingDate(b.booking_date, b.start_time) >= now)
+            .filter(b => {
+              const normSt = (b.status||'').toLowerCase();
+              if (!['confirmed','pending_verification'].includes(normSt)) return false;
+              return parseBookingDate(b.booking_date, '00:00') >= todayStart;
+            })
             .sort((a,b) => parseBookingDate(a.booking_date, a.start_time) - parseBookingDate(b.booking_date, b.start_time));
 
           return (
@@ -4159,6 +4234,7 @@ export default function Outfield() {
                               // Fetch courts for this ground
                               const { data: cts } = await supabase.from('courts').select('*').eq('ground_id', g.id);
                               const courtIds = (cts||[]).map(c=>c.id);
+                              setOwnerSlotViewData([]);
                               setOwnerGroundSlotView({ ground: g, courts: cts||[] });
                               if (courtIds.length > 0) {
                                 setOwnerSlotViewLoading(true);
@@ -4874,9 +4950,9 @@ export default function Outfield() {
               ) : (
                 <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
                   {myBookings.map((b, i) => {
-                    const st = b.status || "confirmed";
+                    const st = (b.status || "confirmed").toLowerCase();
                     const statusCls = st === "confirmed" ? "confirmed" : st === "cancelled" ? "cancelled" : st === "rejected" ? "cancelled" : "pending";
-                    const canCancel = st === "confirmed" && isFutureBooking(b.booking_date);
+                    const canCancel = ['confirmed','pending_verification'].includes(st) && isFutureBooking(b.booking_date);
                     const statusMsg = st === "pending_verification" ? "Payment being verified"
                       : st === "confirmed"    ? null
                       : st === "rejected"     ? "Payment not verified — contact outfield.application@gmail.com"
@@ -6689,13 +6765,14 @@ export default function Outfield() {
                   <div className="bh-empty-s">Your confirmed bookings will appear here once you book a ground.</div>
                 </div>
               ) : bookingHistory.map((b, i) => {
-                const groundName = b.courts?.grounds?.name || b.courts?.name || "Ground";
+                const groundName = b.ground_name || b.courts?.grounds?.name || b.courts?.name || "Ground";
                 const courtName  = b.courts?.name || null;
-                const st = b.status || "confirmed";
+                const st = (b.status || "confirmed").toLowerCase();
                 const statusCls  = st === "confirmed" ? "confirmed" : st === "cancelled" ? "cancelled" : "pending";
                 const canCancel  = ['confirmed','pending_verification'].includes(st) && isFutureBooking(b.booking_date);
                 const advPaid2 = Number(b.advance_paid) || 0;
                 const remaining2 = b.total_price > 0 && advPaid2 > 0 ? Math.max(0, b.total_price - advPaid2) : 0;
+                const mmActive = !!(b.booking_ref && myMatchmakingMap[b.booking_ref]);
                 return (
                   <div key={b.id || i} className="bh-card">
                     <div className="bh-card-top">
@@ -6716,6 +6793,18 @@ export default function Outfield() {
                       <div style={{fontSize:11,color:"#16A34A",fontWeight:600,marginTop:6}}>
                         <CheckCircle size={11} strokeWidth={2.5} style={{marginRight:4,verticalAlign:"middle"}}/>
                         Pay Rs {remaining2.toLocaleString()} remaining at venue
+                      </div>
+                    )}
+                    {canCancel && (
+                      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:10,padding:'8px 10px',background:'var(--border2)',borderRadius:10}}>
+                        <div style={{fontSize:11,color:mmActive?'var(--orange)':'var(--ink4)',display:'flex',alignItems:'center',gap:5,fontWeight:600}}>
+                          <UserPlus size={12} color={mmActive?'var(--orange)':'var(--ink4)'} strokeWidth={2}/>
+                          {mmActive ? 'Listed for matchmaking' : 'List for matchmaking'}
+                        </div>
+                        <button className={`sw ${mmActive?"on":"off"}`} style={{transform:'scale(.8)',transformOrigin:'right center'}}
+                          onClick={()=>handleToggleMatchmaking(b)}>
+                          <div className="sw-knob"/>
+                        </button>
                       </div>
                     )}
                     <div className="bh-divider"/>
@@ -6830,14 +6919,15 @@ export default function Outfield() {
               ) : (
                 <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
                   {bookingHistory.map((b, i) => {
-                    const groundName = b.courts?.grounds?.name || b.courts?.name || "Ground";
+                    const groundName = b.ground_name || b.courts?.grounds?.name || b.courts?.name || "Ground";
                     const courtLabel = b.courts?.name && b.courts.name !== groundName ? ` · ${b.courts.name}` : "";
-                    const statusCls  = b.status === "confirmed" ? "confirmed" : b.status === "cancelled" ? "cancelled" : "pending";
+                    const stNorm = (b.status || "confirmed").toLowerCase();
+                    const statusCls  = stNorm === "confirmed" ? "confirmed" : stNorm === "cancelled" ? "cancelled" : "pending";
                     return (
                       <div key={b.id || i} className="bh-card">
                         <div className="bh-card-top">
                           <div className="bh-ground">{groundName}{courtLabel}</div>
-                          <div className={`bh-status ${statusCls}`}>{b.status || "confirmed"}</div>
+                          <div className={`bh-status ${statusCls}`}>{stNorm === "pending_verification" ? "pending" : stNorm}</div>
                         </div>
                         <div className="bh-meta">
                           <div className="bh-meta-item">
